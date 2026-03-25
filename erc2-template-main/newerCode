@@ -1,0 +1,376 @@
+#include <FEHLCD.h>
+#include <FEHIO.h>
+#include <FEHUtility.h>
+#include <FEHMotor.h>
+
+//Declarations for encoders & motors
+DigitalEncoder right_encoder(FEHIO::Pin8);
+DigitalEncoder left_encoder(FEHIO::Pin9);
+FEHMotor right_motor(FEHMotor::Motor1,9.0);
+FEHMotor left_motor(FEHMotor::Motor2,9.0);
+
+// Declarations for analog optosensors
+AnalogInputPin right_opto(FEHIO::Pin0);
+AnalogInputPin middle_opto(FEHIO::Pin1);
+AnalogInputPin left_opto(FEHIO::Pin2);
+
+void move_forward(int percent, int counts) //using encoders
+{
+    //Reset encoder counts
+    right_encoder.ResetCounts();
+    left_encoder.ResetCounts();
+
+    //Set both motors to desired percent
+    right_motor.SetPercent(percent);
+    left_motor.SetPercent(-1 * percent);
+
+    //While the average of the left and right encoder is less than counts,
+    //keep running motors
+    while((left_encoder.Counts() + right_encoder.Counts()) / 2. < counts);
+
+    //Turn off motors
+    right_motor.Stop();
+    left_motor.Stop();
+}
+
+void encoderExploration(){
+    //Initialize the screen
+    LCD.Clear(BLACK);
+    LCD.SetFontColor(WHITE);
+    int motor_percent = 25; //Input power level here
+    int expected_counts = 318 * 2; //Input theoretical counts here
+    int x, y; //for touch screen
+    LCD.WriteLine("Shaft Encoder Exploration Test");
+    LCD.WriteLine("Touch the screen");
+    while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
+    while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
+
+    move_forward(motor_percent, expected_counts); //see function
+
+    Sleep(2.0); //Wait for counts to stabilize
+    //Print out data
+    LCD.Write("Theoretical Counts: ");
+    LCD.WriteLine(expected_counts);
+    LCD.Write("Motor Percent: ");
+    LCD.WriteLine(motor_percent);
+    LCD.Write("Actual LE Counts: ");
+    LCD.WriteLine(left_encoder.Counts());
+    LCD.Write("Actual RE Counts: ");
+    LCD.WriteLine(right_encoder.Counts());
+}
+
+void optosensorTest(){
+    int x, y; //for touch screen
+
+    //Initialize the screen
+    LCD.Clear(BLACK);
+    LCD.SetFontColor(WHITE);
+
+    LCD.WriteLine("Analog Optosensor Testing");
+    LCD.WriteLine("Touch the screen");
+    while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
+    while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
+
+    // Record values for optosensors on and off of the straight line
+    // Left Optosensor on straight line
+    LCD.Clear(BLACK);
+    LCD.WriteLine("Place left optosensor on straight line");
+    Sleep(0.25); // Wait to avoid double input
+    LCD.WriteLine("Touch screen to record value (1/12)");
+    while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
+    while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
+    // Write the value returned by the optosensor to the screen
+    float leftOptosensorValue = left_opto.Value();
+    LCD.Write("Left Optosensor Value:");
+    LCD.WriteLine(leftOptosensorValue);
+
+    // Write the value returned by the optosensor to the screen
+    float midOptosensorValue = middle_opto.Value();
+    LCD.Write("Mid Optosensor Value:");
+    LCD.WriteLine(midOptosensorValue);
+
+
+    // Write the value returned by the optosensor to the screen
+    float rightOptosensorValue = right_opto.Value();
+    LCD.Write("Right Optosensor Value:");
+    LCD.WriteLine(rightOptosensorValue);
+
+    while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
+    while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
+
+
+    // Left Optosensor off straight line
+    LCD.Clear(BLACK);
+    LCD.WriteLine("Place left optosensor off straight line");
+    Sleep(0.25); // Wait to avoid double input
+    LCD.WriteLine("Touch screen to record value (2/12)");
+    while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
+    while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
+    // Write the value returned by the optosensor to the screen
+    leftOptosensorValue = left_opto.Value();
+    LCD.Write("Left Optosenor Value: ");
+    LCD.WriteLine(leftOptosensorValue);
+
+    midOptosensorValue = middle_opto.Value();
+    LCD.Write("Mid Optosensor Value:");
+    LCD.WriteLine(midOptosensorValue);
+
+    rightOptosensorValue = right_opto.Value();
+    LCD.Write("Right Optosensor Value:");
+    LCD.WriteLine(rightOptosensorValue);
+
+    while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
+    while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
+
+    // Print end message to screen
+    LCD.Clear(BLACK);
+    LCD.WriteLine("Test Finished");
+
+
+}
+
+
+void turnRight(int percent, int counts) {
+
+    right_encoder.ResetCounts();
+    left_encoder.ResetCounts();
+
+
+    while(right_encoder.Counts() <= counts){
+        right_motor.SetPercent(-1* percent);
+        left_motor.SetPercent(-1 * percent); // left goes backwards
+    }
+    
+
+    right_motor.Stop();
+    left_motor.Stop();
+
+}
+
+void turnLeft(int percent, int counts) {
+
+    right_encoder.ResetCounts();
+    left_encoder.ResetCounts();
+
+    while(right_encoder.Counts() <= counts){
+        right_motor.SetPercent(percent);
+        left_motor.SetPercent(percent); // left goes backwards
+    }
+
+    right_motor.Stop();
+    left_motor.Stop();
+
+}
+
+void moveStraight(int percent, int counts) {
+
+    right_encoder.ResetCounts();
+    left_encoder.ResetCounts();
+
+    while(right_encoder.Counts() <= counts){
+        right_motor.SetPercent(percent);
+        left_motor.SetPercent(-1 * percent); // left goes backwards
+    }
+    LCD.Clear();
+    LCD.WriteLine("Right Count:");
+    LCD.WriteLine(right_encoder.Counts());
+    LCD.WriteLine("Left Count:");
+    LCD.WriteLine(left_encoder.Counts());
+
+    right_motor.Stop();
+    left_motor.Stop();
+
+}
+
+enum LineStates {
+    MIDDLE,
+    RIGHT,
+    LEFT
+};
+
+void lineFollow(){
+    int x, y; //for touch screen
+
+    //Initialize the screen
+    LCD.Clear(BLACK);
+    LCD.SetFontColor(WHITE);
+
+    LCD.WriteLine("Analog Optosensor Testing");
+    LCD.WriteLine("Touch the screen");
+    while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
+    while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
+    
+
+    int speed = 25;
+    int state = MIDDLE; // Set the initial state
+    while (true) { // I will follow this line forever!
+        switch(state) {
+            
+            case MIDDLE:
+                /* Drive straight*/
+                right_motor.SetPercent(speed);
+                left_motor.SetPercent(-1 * speed);
+
+                if (right_opto.Value() > 1.5 && middle_opto.Value() < 3.0) {
+                state = RIGHT; 
+                }
+                /* Code for if left sensor is on the line */
+                if (left_opto.Value() > 1.5 && middle_opto.Value() < 3.0) {
+                state = LEFT; 
+                }
+                break;
+            // If the right sensor is on the line...
+            case RIGHT:
+                // Set motor powers for right turn
+                /* Drive */
+                right_motor.SetPercent(0);
+                left_motor.SetPercent(-1 * speed);
+                if( middle_opto.Value() > 3.0 ) {
+                state = MIDDLE;
+                }
+                break;
+            // If the left sensor is on the line...
+            case LEFT:
+                /* Mirror operation of RIGHT state */
+                right_motor.SetPercent(speed);
+                left_motor.SetPercent(0);
+                if( middle_opto.Value() > 3.0 ) {
+                    state = MIDDLE;
+                }
+                break;
+            default: // Error. Something is very wrong.
+                break;
+        }
+
+        
+        // // Write the value returned by the optosensor to the screen
+        // float leftOptosensorValue = left_opto.Value();
+        // LCD.Write("Left Optosensor Value:");
+        // LCD.WriteLine(leftOptosensorValue);
+
+        // // Write the value returned by the optosensor to the screen
+        // float midOptosensorValue = middle_opto.Value();
+        // LCD.Write("Mid Optosensor Value:");
+        // LCD.WriteLine(midOptosensorValue);
+
+
+        // // Write the value returned by the optosensor to the screen
+        // float rightOptosensorValue = right_opto.Value();
+        // LCD.Write("Right Optosensor Value:");
+        // LCD.WriteLine(rightOptosensorValue);
+        // Sleep(0.25);
+        // LCD.Clear();
+    }
+}
+
+void moveForwardsNoEncoder(int speed, float time){
+    right_motor.SetPercent(speed);
+    left_motor.SetPercent(-1 * speed);
+    Sleep(time);
+    right_motor.Stop();
+    left_motor.Stop();
+}
+
+void movePlease(int speed){
+    right_motor.SetPercent(speed);
+    left_motor.SetPercent(-1 * speed);
+}
+
+void turnRightNoEncoder(int speed, int time){
+    
+    right_motor.SetPercent(-1 * speed);
+    left_motor.SetPercent(-1 * speed);
+    Sleep(time);
+    right_motor.Stop();
+    left_motor.Stop();
+    
+    
+}
+
+void ERCMain(){
+
+    // wheel radius = 1.05 
+    // 0.435 inches tread - or 0.1 inches
+    // make a method to convert inches to counts
+    int x, y;
+    int speed = 25;
+    // moveForwardsNoEncoder(speed, 7.0);
+    // Sleep(0.5);
+    // moveForwardsNoEncoder(-1 * speed, 7.0);
+    // Sleep(0.5);
+    // moveForwardsNoEncoder(speed, 1);
+    // Sleep(0.5);
+    // turnRightNoEncoder(speed, 3.0);
+    // Sleep(0.5);
+    // moveForwardsNoEncoder(speed, 20.0);
+
+    //moveForwardsNoEncoder(speed, 7.4);
+    //Sleep(0.5);
+    //moveForwardsNoEncoder(-1 * speed, 7.4);
+
+    movePlease(speed);
+    //while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
+    //while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
+
+    //moveForwardsNoEncoder(speed, 8.0);
+    //Sleep(0.5);
+    //moveForwardsNoEncoder(-1 * speed, 8.0);
+
+    //encoder movement
+    // moveForwards(speed, 472);
+    // Sleep(1.0);
+    // turnLeft(speed, 239);
+    // Sleep(1.0);
+    // moveForwards(speed, 337);
+    // Sleep(1.0);
+    // turnRight(speed, 239);
+    // Sleep(1.0);
+    // moveForwards(speed, 135);
+
+    
+    /****** Main Course Logic
+        // make sure arm is down
+        // move into button
+        moveForwards(-1  * speed, count);
+        // move off of button
+        moveForwards(speed, count);
+        // turn 45 to left
+        turnLeft(speed, count);
+        moveForwards(speed, count);
+
+        // ** Arm code for compost spin ** //
+         - move arm up
+         - turn left 45
+         - turn right 45
+         - move arm down
+
+         // ** turn to apples **
+         -- if angle is horribly off, use bump sensor to correct on wall to the left
+            - turn left 90
+            - move forwards until two bump sensors are triggered
+            - move backwards set distance to basket
+            - turn right 90
+        -- if angle looks fine
+            - turn right 90 
+            - move to apple basket
+            - turn left 90
+        
+        moveArm(down to pick up basket)
+        moveForwards(speed, countToApples);
+        moveArm(up to pick up basket);
+        move
+
+
+        
+    
+    
+    
+    
+    */
+
+    
+    //472.37 for 14 inches
+    //337 for 10 inches
+    //135 for 4 inches
+}
+

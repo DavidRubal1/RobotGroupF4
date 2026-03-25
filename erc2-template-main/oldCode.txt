@@ -1,0 +1,156 @@
+#include <FEH.h>
+#include <Arduino.h>
+
+
+// Declare things like Motors, Servos, etc. here
+AnalogInputPin lightSensor(FEHIO::Pin0);
+FEHServo armServo(FEHServo::Servo0);
+FEHMotor leftWheel(FEHMotor::Motor1, 9.0);
+FEHMotor rightWheel(FEHMotor::Motor0, 9.0);
+DigitalInputPin frontLeft(FEHIO::Pin13);
+DigitalInputPin frontRight(FEHIO::Pin3);
+DigitalInputPin backLeft(FEHIO::Pin14);
+DigitalInputPin backRight(FEHIO::Pin1);
+
+const int speed = 25;
+
+// encoders only work with pins 8-14
+DigitalEncoder left_encoder(FEHIO::Pin9);
+AnalogInputPin left_opt(FEHIO::Pin8); // declaring input pin 
+left_encoder.
+float lowThreshold = 0;
+float highThreshold = 0;
+left_encoder.SetThresholds(lowThreshold, highThreshold);
+
+
+
+enum LineStates {
+    MIDDLE,
+    RIGHT,
+    LEFT
+};
+
+void writeLight(){
+        
+        while(true){
+        while(lightSensor.Value()){
+            LCD.SetFontSize(5);
+            LCD.Write(lightSensor.Value());
+            Sleep(100);
+            LCD.Clear();
+        }
+    }
+}
+
+
+
+void turnBackRightUntilContact(int speed){
+    while(backLeft.Value() || !backRight.Value()){
+        if (!backLeft.Value() && !backRight.Value()){
+            rightWheel.SetPercent(-1 * speed);
+            leftWheel.SetPercent(0);
+        } else{
+            rightWheel.SetPercent(0);
+            leftWheel.SetPercent(-1 * speed);
+        }
+
+
+        
+    }
+    rightWheel.SetPercent(0);
+}
+
+
+void turnBackLeftUntilContact(int speed){
+    while(backLeft.Value() || !backRight.Value()){
+        if(backLeft.Value() && backRight.Value()){
+            rightWheel.SetPercent(0);
+            leftWheel.SetPercent(-1 * speed);
+        } else {
+            rightWheel.SetPercent(-1 * speed);
+            leftWheel.SetPercent(0);
+        }
+    }
+    rightWheel.SetPercent(0);
+}
+
+void moveForwardsUntilContact(int speed){
+    while(frontLeft.Value() || frontRight.Value()){
+        rightWheel.SetPercent(speed);
+        leftWheel.SetPercent(speed);
+    }
+    leftWheel.SetPercent(0);
+    rightWheel.SetPercent(0);
+}
+
+void moveBackwardsUntilContact(int speed){
+    while(backLeft.Value() || !backRight.Value()){
+        rightWheel.SetPercent(-1 * speed);
+        leftWheel.SetPercent(speed);
+    }
+    leftWheel.SetPercent(0);
+    rightWheel.SetPercent(0);
+}
+
+void servoCode(){
+    // servo code
+
+    // armServo.SetMin(500);
+    // armServo.SetMax(2500);
+
+    // while(true){
+    //     armServo.SetDegree(lightSensor.Value() / 5 * 180);
+    // }
+}
+
+void mazeNavigationMicrocontroller(){
+    moveForwardsUntilContact(speed);
+    turnBackLeftUntilContact(speed);
+    moveForwardsUntilContact(speed);
+    turnBackRightUntilContact(speed);
+    moveForwardsUntilContact(speed);
+}
+
+// Right motor percentage is positive to spin forwards, negative to spin backwards
+// Left motor percentage is negative to spin forwards, positive to spin backwards.
+
+
+void ERCMain()
+{
+
+
+
+
+    int state = MIDDLE; // Set the initial state
+    while (true) { // I will follow this line forever!
+        switch(state) {
+            // If I am in the middle of the line...
+            case MIDDLE:
+                // Set motor powers for driving straight
+                /* Drive */
+                if ( /* Right sensor is on line */ ) {
+                state = RIGHT; // update a new state
+                }
+                /* Code for if left sensor is on the line */
+                break;
+            // If the right sensor is on the line...
+            case RIGHT:
+                // Set motor powers for right turn
+                /* Drive */
+                if( /* I no longer need to turn right… */ ) {
+                /* update a new state */
+                }
+                break;
+            // If the left sensor is on the line...
+            case LEFT:
+                /* Mirror operation of RIGHT state */
+                break;
+            default: // Error. Something is very wrong.
+                break;
+        }
+        // Sleep a bit
+    }
+    
+    
+
+}
