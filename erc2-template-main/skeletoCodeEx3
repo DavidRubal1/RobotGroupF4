@@ -227,7 +227,7 @@ void ERCMain()
     float A_heading, B_heading, C_heading, D_heading;
     int B_C_counts, C_D_counts, turn_90_counts;
 
-    RCS.InitializeTouchMenu("Z1TESTING");
+    RCS.InitializeTouchMenu("0150F4CPJ");
 
     LCD.WriteLine("RCS & Data Logging Test");
     LCD.WriteLine("Press Screen To Start");

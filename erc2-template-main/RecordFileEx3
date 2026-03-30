@@ -22,7 +22,7 @@ void ERCMain()
     //     This matches the AruCo code that is provided for this exploration.
     // If your team wishes to use RCS's positioning system going forward,
     //     please use the 8 digit code on your team's page on the store website.
-    RCS.InitializeTouchMenu("Z1TESTING");
+    RCS.InitializeTouchMenu("0150F4CPJ");
 
     // Open SD file for writing
     FEHFile *fptr = SD.FOpen("test.txt", "w");
