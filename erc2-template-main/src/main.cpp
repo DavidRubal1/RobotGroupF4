@@ -8,6 +8,8 @@
 
 #define ENCODER_MAX 48
 #define WHEEL_RADIUS 1.15
+#define ANY_LIGHT_VALUE 0.45
+#define NINETYDEG_COUNTS 48
 
 #define RCS_WAIT_TIME_IN_SEC 0.35
 
@@ -30,10 +32,12 @@ FEHMotor left_motor(FEHMotor::Motor2,9.0);
 AnalogInputPin lightSensor(FEHIO::Pin0);
 void turn(int percent, int counts);
 void moveForwardsNoEncoder(int speed, float time);
+// converts inches input into counts for shaft encoders
 int getCounts(float dist){
     return (ENCODER_MAX * dist) / (2 * PI * WHEEL_RADIUS);
 }
 
+// RCS pulse function for position correction
 void pulse_forward(int percent, float seconds) 
 {
     right_motor.SetPercent(percent);
@@ -45,6 +49,7 @@ void pulse_forward(int percent, float seconds)
     left_motor.Stop();
 }
 
+// RCS pulse function for heading correction
 void pulse_counterclockwise(int percent, float seconds) 
 {
     right_motor.SetPercent(percent);
@@ -56,22 +61,7 @@ void pulse_counterclockwise(int percent, float seconds)
     left_motor.Stop();
 }
 
-// THIS IS ALSO REDUNDANT
-void move_forward(int percent, int counts) //using encoders
-{
-    right_encoder.ResetCounts();
-    left_encoder.ResetCounts();
-
-    right_motor.SetPercent(percent);
-    left_motor.SetPercent(percent);
-
-    while((left_encoder.Counts() + right_encoder.Counts()) / 2. < counts);
-
-    right_motor.Stop();
-    left_motor.Stop();
-}
-
-// THIS IS REDUNDANT WITH THE OTHER TURN THING I HAVE, REMOVE AND REPLACE WHEN OPTIMIZING
+// This is redundant but is useful for testing turning without shaft encoders
 void turn_counterclockwise(int percent, int counts) 
 {
 
@@ -87,6 +77,7 @@ void turn_counterclockwise(int percent, int counts)
     left_motor.Stop();
 }
 
+// Use RCS to get current x (inches)
 void check_x(float x_coordinate, int orientation)
 {
     int power = PULSE_POWER;
@@ -114,6 +105,7 @@ void check_x(float x_coordinate, int orientation)
 }
 }
 
+// Use RCS to get current y (inches)
 void check_y(float y_coordinate, int orientation)
 {
     int power = PULSE_POWER;
@@ -141,6 +133,7 @@ void check_y(float y_coordinate, int orientation)
     }   
 }
 
+// Use RCS to get current heading (degrees)
 void check_heading(float heading)
 {
     //You will need to fill out this one yourself and take into account
@@ -173,6 +166,7 @@ void check_heading(float heading)
 
 }
 
+// writes the value that the CdS cell senses
 void writeLight(){
         LCD.SetFontSize(5);
         int x, y;
@@ -185,11 +179,15 @@ void writeLight(){
         }
 }
 
+// pauses until the start light haas been detected by the CdS Cell
 void detectStart(){
-        while(lightSensor.Value() < 0.7){
-            LCD.WriteLine("LIGHT DETECTED");
+        while(!(lightSensor.Value() < ANY_LIGHT_VALUE)){
+            LCD.WriteLine("LIGHT NOT DETECTED");
         }
+        LCD.WriteLine("LIGHT DETECTED");
 }
+
+// moves until either encoder his the specified count
 void moveForwardEncoder(int percent, int counts) {
     right_encoder.ResetCounts();
     left_encoder.ResetCounts();
@@ -215,9 +213,6 @@ void moveForwardEncoder(int percent, int counts) {
     left_motor.Stop();
 }
 
-
-
-
 void encoderExploration(float inches){
     LCD.Clear(BLACK);
     LCD.SetFontColor(WHITE);
@@ -242,12 +237,9 @@ void encoderExploration(float inches){
     LCD.WriteLine(right_encoder.Counts());
 }
 
-
-
 // positive percent = turn right, negative percent = turn left
 // turning 90 is approx 3/4 of full rotation 
 // so w/ 48, 90deg is 36 counts
-// APPARENTLY, 45degrees i 36, so 90 would be 72
 // IS 45deg 3/8? if so then its 18 counts for 45deg
 void turn(int percent, int counts) {
 
@@ -334,7 +326,6 @@ void displayLightColor(float seconds){
 
 void ERCMain(){
 
-
     int x, y;
     int speed = 25;
     // wheel radius = 1.05 
@@ -360,25 +351,37 @@ void ERCMain(){
     // moveForwardEncoder(-1 * speed, getCounts(3.0));
     // writeLight();
 
-    // 3/24/26 move
-    // moveForwardEncoder(-speed, getCounts(0.5));
-    // moveForwardEncoder(speed, getCounts(0.5));
-    // turn(speed, 18);
-    // moveForwardEncoder(speed, getCounts(15));
-    // moveForwardEncoder(speed, getCounts(12.36));
-    // moveForwardEncoder(speed, getCounts(2));
-    // turn(speed, -36);
-    // moveForwardEncoder(speed, getCounts(14));
+    // 3/25/26 Milestone 3 test - it worked, needed to get rid of hot glue on treads to prevent slipping
+    // detectStart();
+    // moveForwardEncoder(-speed, getCounts(0.75));
+    // moveForwardEncoder(speed, getCounts(0.55));
+    // turn(speed, NINETYDEG_COUNTS/2);
+    // moveForwardEncoder(speed, getCounts(12));
+    // Sleep(0.2);
+    // // RCS to the good position
+    // moveForwardEncoder(speed, getCounts(19));
+    // Sleep(0.2);
+    // turn(-speed, NINETYDEG_COUNTS + 1);
+    // moveForwardEncoder(35, getCounts(17));
+    // moveForwardEncoder(-35, getCounts(12));
+    //moveForwardEncoder(-speed, getCounts(13));
     // while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
     // while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
-    // moveForwardEncoder(speed, getCounts(10));
+    // moveForwardEncoder(-speed, getCounts(10));
     // while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
     // while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
     // writeLight();
 
     // while(true){
-    //     moveForwardEncoder(speed, getCounts(10)); 
+    //     turn(speed, 43);
+    //     Sleep(0.2);
+    //     turn(-speed, 43);
+    //     Sleep(0.2);
     // }
+
+    // test turning to find position for RCS
+    //turn(-speed, NINETYDEG_COUNTS);
+
 
     // 3/24/26 CdS cell testing
     //writeLight();
@@ -401,8 +404,8 @@ void ERCMain(){
     // Sleep(0.1);
 
     // 3/24/26  FIND THE THRESHOLD FOR LIGHT VALUES USING FILTERS - YOU FOUND IT
-    writeLight();
-    // 0.44 for on, 1.9 for off
+    // writeLight();
+    // *** 0.44 for on, 1.9 for off ***
     
 
     // MILESTONE 2
@@ -445,10 +448,8 @@ void ERCMain(){
     // (cds cell detected light), (getCorrectLight from cdscell)
     // turn approc 12.5 degrees either direction
     // (based on light from cds cell), turn(speed, 5)
-    // 
 
 
-    // 
     // moveForwardsNoEncoder(speed, 7.0);
     // Sleep(0.5);
     // moveForwardsNoEncoder(-1 * speed, 7.0);
