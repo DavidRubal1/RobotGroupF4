@@ -2,77 +2,623 @@
 #include <FEHIO.h>
 #include <FEHUtility.h>
 #include <FEHRCS.h>
-#include <FEHSD.h>
+#include <FEHMotor.h>
+#include "FEHLCD.h"
+#include <time.h>
+#include <FEH.h>
+#include <Arduino.h>
 
-void ERCMain()
+#define ENCODER_MAX 48
+#define WHEEL_RADIUS 1.15
+#define ANY_LIGHT_VALUE 0.45
+#define NINETYDEG_COUNTS 48
+#define DEFAULT_SPEED 25
+#define RCS_WAIT_TIME_IN_SEC 0.35
+
+// Defines for pulsing the robot
+#define PULSE_TIME 0.2
+#define PULSE_POWER -15
+
+// Define for the motor power
+#define POWER -20
+
+// Orientation of AruCo Code
+#define FORWARDS 0
+#define BACKWARDS 1
+
+// heading keywords
+#define N 90
+#define NE 45
+#define NW 135
+// need special code to handle 0
+#define E 0
+#define S 270
+#define SE
+#define SW 
+#define W 180
+
+
+DigitalEncoder right_encoder(FEHIO::Pin8);
+DigitalEncoder left_encoder(FEHIO::Pin10);
+FEHMotor right_motor(FEHMotor::Motor1,9.0);
+FEHMotor left_motor(FEHMotor::Motor2,9.0);
+FEHServo armServo(FEHServo::Servo0);
+
+AnalogInputPin lightSensor(FEHIO::Pin0);
+void turn(int percent, int counts);
+void moveForwardsNoEncoder(int speed, float time);
+void moveForwardEncoder(int percent, int counts);
+void detectStart();
+
+// converts inches input into counts for shaft encoders
+int getCounts(float dist){
+    return (ENCODER_MAX * dist) / (2 * PI * WHEEL_RADIUS);
+}
+
+// RCS pulse function for position correction
+void pulse_forward(int percent, float seconds) 
 {
-    // Declare variables.
-    // For touchscreen functionality.
-    int touch_x, touch_y;
-    // Loop n through points to record necessary positions.
-    int n;
-    char points[4] = {'A', 'B', 'C', 'D'};
+    right_motor.SetPercent(percent);
+    left_motor.SetPercent(percent);
 
-    // Disable RCS position rate limiting to allow for more
-    // frequent position updates (testing only, won't work during competition)
-    RCS.DisableRateLimit();
+    Sleep(seconds);
 
-    // Call this function to initialize the RCS to a course.
-    // For Exploration 3, please use the key provided below.
-    //     This matches the AruCo code that is provided for this exploration.
-    // If your team wishes to use RCS's positioning system going forward,
-    //     please use the 8 digit code on your team's page on the store website.
-    RCS.InitializeTouchMenu("0150F4CPJ");
+    right_motor.Stop();
+    left_motor.Stop();
+}
 
-    // Open SD file for writing
-    FEHFile *fptr = SD.FOpen("test.txt", "w");
+// RCS pulse function for heading correction
+void pulse_counterclockwise(int percent, float seconds) 
+{
+    right_motor.SetPercent(percent);
+    left_motor.SetPercent(-percent);
 
-    // Wait for touchscreen to be pressed and released
-    LCD.WriteLine("Press Screen to Start");
-    while (!LCD.Touch(&touch_x, &touch_y));
-    while (LCD.Touch(&touch_x, &touch_y));
+    Sleep(seconds);
 
-    // Clear screen
-    LCD.Clear();
+    right_motor.Stop();
+    left_motor.Stop();
+}
 
-    // Step through each path point (A,B,C,D) to record position and heading
-    for (n = 0; n <= 3; n++)
-    {
-        LCD.Clear();
-        LCD.WriteRC("Touch to set point ", 0, 0);
-        LCD.WriteRC(points[n], 0, 20);
+// This is redundant but is useful for testing turning without shaft encoders
+void turn_counterclockwise(int percent, int counts) 
+{
 
-        RCSPose *pose;
+    right_encoder.ResetCounts();
+    left_encoder.ResetCounts();
 
-        // Loop until touchscreen is pressed, continuously requesting 
-        // RCS position data and writing it to the LCD screen
-        while (!LCD.Touch(&touch_x, &touch_y))
-        {
-            // Request position data from RCS
-            pose = RCS.RequestPosition();
+    right_motor.SetPercent(percent);
+    left_motor.SetPercent(-percent);
 
-            // Clear previous position data from LCD
-            LCD.SetFontColor(BLACK);
-            LCD.FillRectangle(130, 20, 100, 60);
+    while((left_encoder.Counts() + right_encoder.Counts()) / 2. < counts);
 
-            LCD.SetFontColor(WHITE);
-            LCD.WriteRC("X Position:", 2, 0);
-            LCD.WriteRC("Y Position:", 3, 0);
-            LCD.WriteRC("Heading:", 4, 0);
+    right_motor.Stop();
+    left_motor.Stop();
+}
 
-            // Write the RCS data to the LCD screen
-            LCD.WriteRC(pose->x, 2, 12);
-            LCD.WriteRC(pose->y, 3, 12);
-            LCD.WriteRC(pose->heading, 4, 12);
-        }
-
-        // Print RCS data for this path point to file
-        SD.FPrintf(fptr, "%f %f\n", pose->x, pose->y);
-
-        // Wait for touchscreen to be released
-        while (!LCD.Touch(&touch_x, &touch_y));
+// Use RCS to get current x (inches)
+void check_x(float x_coordinate, int orientation)
+{
+    int power = PULSE_POWER;
+    if(orientation == BACKWARDS){
+        power = -PULSE_POWER;
     }
 
-    // Close SD file
-    SD.FClose(fptr);
+    RCSPose* pos = RCS.RequestPosition();
+
+    for (int i = 0; i < 10; i++) {
+        if((pos->x > -1) && (pos->x < x_coordinate - 1 || pos->x > x_coordinate + 1))
+        {
+            if(pos->x > x_coordinate)
+            {
+                pulse_forward(-power, PULSE_TIME);
+            }
+            else if(pos->x < x_coordinate)
+            {
+                pulse_forward(power, PULSE_TIME);
+            }
+            Sleep(RCS_WAIT_TIME_IN_SEC);
+
+            pos = RCS.RequestPosition();
+        }
 }
+}
+
+// Use RCS to get current y (inches)
+void check_y(float y_coordinate, int orientation)
+{
+    int power = PULSE_POWER;
+    if(orientation == BACKWARDS){
+        power = -PULSE_POWER;
+    }
+
+    RCSPose* pose = RCS.RequestPosition();
+
+    for (int i = 0; i < 10; i++) {
+        while((pose->y > -1) && (pose->y < y_coordinate - 1 || pose->y > y_coordinate + 1))
+        {
+            if(pose->y > y_coordinate)
+            {
+                pulse_forward(-power, PULSE_TIME);
+            }
+            else if(pose->y < y_coordinate)
+            {
+                pulse_forward(power, PULSE_TIME);
+            }
+            Sleep(RCS_WAIT_TIME_IN_SEC);
+            
+            pose = RCS.RequestPosition();
+        }
+    }   
+}
+
+// Use RCS to get current heading (degrees)
+void check_heading(float heading)
+{
+    //You will need to fill out this one yourself and take into account
+    //checking for proper RCS data and the edge conditions
+    //(when you want the robot to go to 0 degrees or close to 0 degrees)
+
+
+    RCSPose* pos = RCS.RequestPosition();
+    int correctionCounts = 10;
+    // maybe i decrease the correction or power over time if it keeps over-overcorrecting
+
+    // ***** THIS BREAKS WHEN I CROSS 0!!!! ****** //
+
+    for (int i = 0; i < 10; i++) {
+        while((pos->heading > -1) && (pos->heading < heading - 3 || pos->heading > heading + 3))
+        {
+            if(pos->heading> heading)
+            {
+                turn_counterclockwise(-1 * PULSE_POWER, correctionCounts);
+            }
+            else if(pos->heading < heading)
+            {
+                turn_counterclockwise(PULSE_POWER, correctionCounts);
+            }
+            Sleep(RCS_WAIT_TIME_IN_SEC);
+            
+            pos = RCS.RequestPosition();
+        }
+    }   
+
+}
+
+// writes the value that the CdS cell senses
+void writeLight(){
+        LCD.SetFontSize(5);
+        int x, y;
+        while(!LCD.Touch(&x,&y)){ //Wait for screen to be pressed
+            
+            LCD.Write(lightSensor.Value());
+            Sleep(0.5);
+            LCD.Clear();
+        
+        }
+}
+// moves until either encoder his the specified count
+void moveForwardEncoder(int percent, int counts) {
+    right_encoder.ResetCounts();
+    left_encoder.ResetCounts();
+
+    right_motor.SetPercent(percent);
+    left_motor.SetPercent(-1 * percent);
+
+    // maybe take the larger? idk
+    // have it stop when it stops spinning/ hits something
+    while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts){
+        LCD.Write("Actual LE Counts: ");
+        LCD.WriteLine(left_encoder.Counts());
+        LCD.Write("Actual RE Counts: ");
+        LCD.WriteLine(right_encoder.Counts());
+        LCD.Clear();
+    }
+        LCD.Write("Actual LE Counts: ");
+        LCD.WriteLine(left_encoder.Counts());
+        LCD.Write("Actual RE Counts: ");
+        LCD.WriteLine(right_encoder.Counts());
+
+    right_motor.Stop();
+    left_motor.Stop();
+}
+
+// pauses until the start light haas been detected by the CdS Cell
+void detectStart(){
+        while(!(lightSensor.Value() < ANY_LIGHT_VALUE)){
+            LCD.WriteLine("LIGHT NOT DETECTED");
+        }
+        LCD.WriteLine("LIGHT DETECTED");
+        moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.75));
+        moveForwardEncoder(DEFAULT_SPEED, getCounts(0.55));
+}
+
+
+
+void encoderExploration(float inches){
+    LCD.Clear(BLACK);
+    LCD.SetFontColor(WHITE);
+    int motor_percent = 25;
+    int expected_counts = getCounts(inches); 
+    int x, y;
+    LCD.WriteLine("Shaft Encoder Exploration Test");
+    LCD.WriteLine("Touch the screen");
+    while(!LCD.Touch(&x,&y));
+    while(LCD.Touch(&x,&y));
+
+    moveForwardEncoder(motor_percent, expected_counts);
+
+    Sleep(2.0); //Wait for counts to stabilize
+    LCD.Write("Theoretical Counts: ");
+    LCD.WriteLine(expected_counts);
+    LCD.Write("Motor Percent: ");
+    LCD.WriteLine(motor_percent);
+    LCD.Write("Actual LE Counts: ");
+    LCD.WriteLine(left_encoder.Counts());
+    LCD.Write("Actual RE Counts: ");
+    LCD.WriteLine(right_encoder.Counts());
+}
+
+// positive percent = turn right, negative percent = turn left
+// turning 90 is approx 3/4 of full rotation 
+// so w/ 48, 90deg is 36 counts
+// IS 45deg 3/8? if so then its 18 counts for 45deg
+void turn(int percent, int counts) {
+
+
+    right_encoder.ResetCounts();
+    left_encoder.ResetCounts();
+
+    while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts){
+        right_motor.SetPercent(-1* percent);
+        left_motor.SetPercent(-1* percent); 
+    }
+    
+    right_motor.Stop();
+    left_motor.Stop();
+
+}
+
+void moveStraight(int percent, int counts) {
+
+    right_encoder.ResetCounts();
+    left_encoder.ResetCounts();
+
+    while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts){
+        right_motor.SetPercent(percent);
+        left_motor.SetPercent(-1 * percent); // left goes backwards
+    }
+    LCD.Clear();
+    LCD.WriteLine("Right Count:");
+    LCD.WriteLine(right_encoder.Counts());
+    LCD.WriteLine("Left Count:");
+    LCD.WriteLine(left_encoder.Counts());
+
+    right_motor.Stop();
+    left_motor.Stop();
+
+}
+
+void moveForwardsNoEncoder(int speed, float time){
+    right_motor.SetPercent(speed);
+    left_motor.SetPercent(-1 * speed);
+    Sleep(time);
+    right_motor.Stop();
+    left_motor.Stop();
+}
+
+void movePlease(int speed){
+    right_motor.SetPercent(speed);
+    left_motor.SetPercent(-1 * speed);
+}
+
+void turnRightNoEncoder(int speed, float time){
+    
+    right_motor.SetPercent(-1 * speed);
+    left_motor.SetPercent(-1 * speed);
+    Sleep(time);
+    right_motor.Stop();
+    left_motor.Stop();
+    
+}
+
+// gets the number of counts for the given distance in inches
+// FIND THRESHOLD FIRST WITH WORKING CDS CELL
+void displayLightColor(float seconds){
+    Sleep(0.5);
+    // threshold for color detection
+    // RED > threshold > BLUE
+    LCD.SetFontSize(8);
+    float threshold = 1.3;
+    int starttime = time(NULL);
+    while(time(NULL) - starttime <= seconds){
+        float lightValue = lightSensor.Value();
+        if(lightValue > threshold){
+            LCD.WriteLine("RED");
+            turn(25, 10);
+            moveForwardsNoEncoder(25, 1.5);
+        } else{
+            LCD.WriteLine("BLUE");
+            turn(25, -10);
+            moveForwardsNoEncoder(25, 1.5);
+        }
+    }
+    
+}
+
+void testServo(){
+    armServo.TouchCalibrate();
+}
+
+void moveArm(int currentDegree, int targetDegree){
+    int direction = 1; //1 = up, -1 = down
+    if(targetDegree < currentDegree){
+        direction = -1;
+    }
+    for(int i = currentDegree + 1 * direction; abs(targetDegree-i) > 0; i+=(1*direction)){
+        armServo.SetDegree(i);
+        Sleep(0.1);
+    }
+
+}
+
+void ERCMain(){
+
+    // RCS STUFF
+    // RCS.InitializeTouchMenu("0150F4CPJ");
+    // RCSPose *pos;
+    // RCS.DisableRateLimit();
+
+    //0 = left, 1 = mid, 2 = right
+    //int lever = RCS.GetLever();
+
+    int x, y;
+    // wheel radius = 1.05 
+    // 0.435 inches tread - or more likely 0.1 inches
+    // total experimental radius is  1.15 inches
+    // wheel radius of 1.15
+    // 48 counts per full rotation
+    // make a method to convert inches to counts
+    // dist = (2pi*radius*CountsRecorded) / Counts per rev
+    // dist = (2pi * 1.15 * n) / 48
+
+
+
+    // Servo notes
+    /**
+     * Stablize the servo and the arm slot, 
+     * connect to same object or connect servo to lift
+     * 
+     * 
+     * 
+     * 
+     * 
+     * 
+     */
+    
+ 
+    //TestGUI();
+    //FIND SERVO MIN AND MAX
+    
+    //testServo();
+    armServo.SetMin(500);
+    armServo.SetMax(2500);
+    // MAKE SURE THE STARTING DEGREE IS KNOWN BEFORE MOVING
+    //armServo.SetDegree(180);
+    moveArm(90, 0);
+    moveArm(0, 90);
+
+
+    // Sleep(1.0);
+    // armServo.SetDegree(180.0);
+    // Sleep(1.0);
+    // armServo.SetDegree(0);
+    // Sleep(1.0);
+    // armServo.SetDegree(180.0);
+    // built in MIN: 500
+    //MAX: 2500
+
+    // // Milestone 4
+    // we need arm movement code, more precise movement code (RCS) to account for slipping, and 
+    // detectStart();  
+    // //reset arm
+    // moveArm(SET TO MIN);
+    // //turn(DEFAULT_SPEED, NINETYDEG_COUNTS/2);
+    // // move to y coord for apple lineup
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(10.0));
+    // check_y(24.0, FORWARDS);
+    // //turn to face apple
+    // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
+    // //move to apple
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(4.0));
+    // check_x(10.0, FORWARDS);
+    // // Arm movement code
+    // // FIND ARM MIN AND MAX and the range of the the arm mechanism
+    // moveArm(MOVE UP);
+    // //turn slightly away from ramp
+    // turn(DEFAULT_SPEED, 5);
+    // // back up
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(3.0));
+    // // turn back to align
+    // turn(-DEFAULT_SPEED, 5);
+    // // back up to ramp
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(15.0));
+    // check_x(31.0, BACKWARDS); // make sure this x aligns well with the 
+    // // turn to ramp
+    // turn(DEFAULT_SPEED, NINETYDEG_COUNTS);
+    // check_heading(N);
+    // // go up ramp 
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(16.0));
+    // // get to line
+    // check_y(48.0, FORWARDS);
+
+
+
+
+
+
+
+
+    // 3/23/26 movement test - GOOD
+    // moveForwardsNoEncoder(speed, 3.0);
+    // turnRightNoEncoder(25, 5.0);
+    // moveForwardsNoEncoder(-1 * speed, 3.0);
+
+    // 3/24/26 encoder movement test - Alright, Encoders slightly inconsistent
+    // writeLight();
+    // moveForwardEncoder(speed, getCounts(3.0));
+    // turn(25, 36);
+    // turn(-25, 36);
+    // moveForwardEncoder(-1 * speed, getCounts(3.0));
+    // writeLight();
+
+    // 3/25/26 Milestone 3 test - it worked, needed to get rid of hot glue on treads to prevent slipping
+    // detectStart();
+    // turn(speed, NINETYDEG_COUNTS/2);
+    // moveForwardEncoder(speed, getCounts(12));
+    // Sleep(0.2);
+    // // RCS to the good position
+    // moveForwardEncoder(speed, getCounts(19));
+    // Sleep(0.2);
+    // turn(-speed, NINETYDEG_COUNTS + 1);
+    // moveForwardEncoder(35, getCounts(17));
+    // moveForwardEncoder(-35, getCounts(12));
+    //moveForwardEncoder(-speed, getCounts(13));
+    // while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
+    // while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
+    // moveForwardEncoder(-speed, getCounts(10));
+    // while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
+    // while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
+    // writeLight();
+
+    // while(true){
+    //     turn(speed, 43);
+    //     Sleep(0.2);
+    //     turn(-speed, 43);
+    //     Sleep(0.2);
+    // }
+
+    // test turning to find position for RCS
+    //turn(-speed, NINETYDEG_COUNTS);
+
+
+    // 3/24/26 CdS cell testing
+    //writeLight();
+
+    // ***** *ENCODER MOVEMENT TEST* ******//
+ 
+    // // //Test move forwards 5 inches
+    // turn(speed, 36);
+    // turn(-1 * speed, 18);
+    // moveForwardEncoder(speed, getCounts(5.0));
+
+    // ********* Encoder output test *********//
+    // float inches = 3;
+    // encoderExploration(inches);
+    // while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
+    // while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
+    // turn(speed, 72);
+    // Sleep(0.1);
+    // turn(-speed, 36);
+    // Sleep(0.1);
+
+    // 3/24/26  FIND THE THRESHOLD FOR LIGHT VALUES USING FILTERS - YOU FOUND IT
+    // writeLight();
+    // *** 0.44 for on, 1.9 for off ***
+    
+
+    // MILESTONE 2
+    //15 inches from light to ramp
+    // 12 ramp is 12 inches long and 3 inches high, 12.36 inches hypotenuse
+    // 11.5 inches from top of ramp to middle of line
+    // 8? inches up to the light,
+    // 8.5 ish inches to the lights, make sure the robot actually pushes it
+
+    // MILESTONE 2 CODE
+    // (cds cell detected light)
+
+    // moveForwardsNoEncoder(-speed, 1.0);
+    // Sleep(0.2);
+    // moveForwardsNoEncoder(speed, 1.0);
+    // Sleep(0.2);
+    // //turn(speed - 5, 27);
+    // turnRightNoEncoder(speed, 2.0);
+    // Sleep(0.2);
+    // moveForwardsNoEncoder(speed, 20);
+    // Sleep(0.2);
+    // // turn(-1 * (speed - 5), 27);
+    // Sleep(0.2);
+    // moveForwardEncoder(speed, getCounts(12));
+    // Sleep(0.2);
+    // displayLightColor(5);
+
+    // moveForwardsEncoder(-1  * speed, getCounts(1.5));
+    // moveForwardsEncoder(speed, getCounts(1.5));
+    // turn(speed, 18); // 45 deg turn right
+    // to ramp
+    // moveForwardsEncoder(speed, getCounts(12));
+    // sleep(0.2);
+    // up ramp
+    // moveForwardsEncoder(speed, getCounts(12.36));
+    // moveForwardsEncoder(speed, getCounts(8));
+    // turn(-1 * speed, 38);
+    // move to light, probably write new code for moving until light is sensed?
+    // moveForwardsEncoder(speed, getCounts(8));
+    // (cds cell detected light), (getCorrectLight from cdscell)
+    // turn approc 12.5 degrees either direction
+    // (based on light from cds cell), turn(speed, 5)
+
+
+    // moveForwardsNoEncoder(speed, 7.0);
+    // Sleep(0.5);
+    // moveForwardsNoEncoder(-1 * speed, 7.0);
+    // Sleep(0.5);
+    // moveForwardsNoEncoder(speed, 1);
+    // Sleep(0.5);
+    // turnRightNoEncoder(speed, 3.0);
+    // Sleep(0.5);
+    // moveForwardsNoEncoder(speed, 20.0);
+
+    //moveForwardsNoEncoder(speed, 7.4);
+    //Sleep(0.5);
+    //moveForwardsNoEncoder(-1 * speed, 7.4);
+
+    
+    //while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
+    //while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
+
+    //moveForwardsNoEncoder(speed, 8.0);
+    //Sleep(0.5);
+    //moveForwardsNoEncoder(-1 * speed, 8.0);
+
+    //encoder movement
+    // moveForwards(speed, 472);
+    // Sleep(1.0);
+    // turnLeft(speed, 239);
+    // Sleep(1.0);
+    // moveForwards(speed, 337);
+    // Sleep(1.0);
+    // turnRight(speed, 239);
+    // Sleep(1.0);
+    // moveForwards(speed, 135);
+
+    
+        
+        // moveArm(down to pick up basket)
+        // moveForwards(speed, countToApples);
+        // moveArm(up to pick up basket);
+        // move
+
+
+        
+    
+    
+    
+    
+    
+
+    
+    //472.37 for 14 inches
+    //337 for 10 inches
+    //135 for 4 inches
+}
+
