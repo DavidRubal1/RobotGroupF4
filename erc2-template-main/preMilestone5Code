@@ -27,15 +27,15 @@
 #define BACKWARDS 1
 
 // heading keywords
-#define N 270
-#define NE 225
-#define NW 315
+#define N 90
+#define NE 45
+#define NW 135
 // need special code to handle 0
-#define E 180
-#define S 90
-#define SE 135
-#define SW 45
-#define W 0
+#define E 0
+#define S 270
+#define SE
+#define SW 
+#define W 
 
 DigitalEncoder right_encoder(FEHIO::Pin8);
 DigitalEncoder left_encoder(FEHIO::Pin10);
@@ -69,15 +69,14 @@ void moveArm(int currentDegree, int targetDegree){
 
 // pauses until the start light haas been detected by the CdS Cell
 void detectStart(){
-        while((lightSensor.Value() > ANY_LIGHT_VALUE));
-            LCD.Clear();
+        while((lightSensor.Value() > ANY_LIGHT_VALUE)){
+            LCD.WriteLine("LIGHT NOT DETECTED");
+            Sleep(5.0);
+        }
+            Sleep(5.0);
+            LCD.WriteLine("LIGHT DETECTED");
             moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.75));
-            moveForwardEncoder(DEFAULT_SPEED, getCounts(8.0));
-            RCSPose* pos = RCS.RequestPosition();
-            LCD.WriteLine("RCS X:");
-            LCD.WriteLine(pos->x);
-            LCD.WriteLine("RCS Y:");
-            LCD.WriteLine(pos->y);
+            moveForwardEncoder(DEFAULT_SPEED, getCounts(0.55));
         
         
 }
@@ -151,43 +150,6 @@ void check_x(float x_coordinate, int orientation)
 }
 }
 
-// gets the number of counts for the robot to move to the specified robots
-int getXYCountsRCS(float x, float y){
-
-    RCSPose* pos = RCS.RequestPosition();
-    LCD.WriteLine("RCS X:");
-    LCD.WriteLine(pos->x);
-    LCD.WriteLine("RCS Y:");
-    LCD.WriteLine(pos->y);
-    Sleep(2.0);
-    LCD.Clear();
-    float underSqrt = pow((x - pos->x), 2) + pow((y - pos->y), 2.0);
-    float hyp = sqrt(underSqrt);
-    LCD.WriteLine("DISTANCE:");
-    LCD.WriteLine(hyp);
-    LCD.WriteLine("COUNTS:");
-    LCD.WriteLine(getCounts(hyp));
-    return getCounts(hyp);
-}
-
-// gives the rotation counts for the most optimal rotation direction to the given heading from the current heading
-int getHeadingCounts(float heading){
-    RCSPose* pos = RCS.RequestPosition();
-    float degrees;
-    if(abs(pos->heading - heading) > 180){ // turn counter-clockwise
-        if(pos->heading > heading){
-            degrees = (360 - pos->heading) + heading; //(360 - 300) + 40 = 100
-        }else{
-            degrees = (360 - heading) + pos->heading;
-        }
-    } else{ // turn clockwise
-        degrees = abs(pos->heading - heading);
-    }
-
-    // 300 -> 40 = 100 degree turn
-    return (degrees/90) * NINETYDEG_COUNTS;
-}
-
 // Use RCS to get current y (inches)
 void check_y(float y_coordinate, int orientation)
 {
@@ -228,35 +190,23 @@ void check_heading(float heading)
     int correctionCounts = 10;
     // maybe i decrease the correction or power over time if it keeps over-overcorrecting
 
+    // ***** THIS BREAKS WHEN I CROSS 0!!!! ****** //
 
     for (int i = 0; i < 10; i++) {
-        // case for
-        if(heading == W){
-            while((pos->heading > -1) && (0 < (pos->heading) && (pos->heading) < 3) || 
-                    ((pos->heading) > 360-3)){
-                        if(pos->heading < 3 && pos->heading > 0){
-                            turn_counterclockwise(PULSE_POWER, correctionCounts);
-                        } else{
-                            turn_counterclockwise(-PULSE_POWER, correctionCounts);
-                        }
+        while((pos->heading > -1) && (pos->heading < heading - 3 || pos->heading > heading + 3))
+        {
+            if(pos->heading> heading)
+            {
+                turn_counterclockwise(-1 * PULSE_POWER, correctionCounts);
             }
-        }
-        else{
-            while((pos->heading > -1) && (pos->heading < heading - 3 || pos->heading > heading + 3)) {
-                if(pos->heading> heading)
-                {
-                    turn_counterclockwise(-1 * PULSE_POWER, correctionCounts);
-                }
-                else if(pos->heading < heading)
-                {
-                    turn_counterclockwise(PULSE_POWER, correctionCounts);
-                }
-                Sleep(RCS_WAIT_TIME_IN_SEC);
-                
-                pos = RCS.RequestPosition();
+            else if(pos->heading < heading)
+            {
+                turn_counterclockwise(PULSE_POWER, correctionCounts);
             }
+            Sleep(RCS_WAIT_TIME_IN_SEC);
+            
+            pos = RCS.RequestPosition();
         }
-
     }   
 
 }
@@ -284,16 +234,16 @@ void moveForwardEncoder(int percent, int counts) {
     // maybe take the larger? idk
     // have it stop when it stops spinning/ hits something
     while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts){
-        // LCD.Write("Actual LE Counts: ");
-        // LCD.WriteLine(left_encoder.Counts());
-        // LCD.Write("Actual RE Counts: ");
-        // LCD.WriteLine(right_encoder.Counts());
-        // LCD.Clear();
+        LCD.Write("Actual LE Counts: ");
+        LCD.WriteLine(left_encoder.Counts());
+        LCD.Write("Actual RE Counts: ");
+        LCD.WriteLine(right_encoder.Counts());
+        LCD.Clear();
     }
-        // LCD.Write("Actual LE Counts: ");
-        // LCD.WriteLine(left_encoder.Counts());
-        // LCD.Write("Actual RE Counts: ");
-        // LCD.WriteLine(right_encoder.Counts());
+        LCD.Write("Actual LE Counts: ");
+        LCD.WriteLine(left_encoder.Counts());
+        LCD.Write("Actual RE Counts: ");
+        LCD.WriteLine(right_encoder.Counts());
 
     right_motor.Stop();
     left_motor.Stop();
@@ -416,12 +366,13 @@ void testServo(){
 }
 
 
+
 void ERCMain(){
 
     // RCS STUFF
-    RCS.InitializeTouchMenu("0150F4CPJ");
+    // RCS.InitializeTouchMenu("0150F4CPJ");
     // RCSPose *pos;
-    RCS.DisableRateLimit();
+    // RCS.DisableRateLimit();
 
     //0 = left, 1 = mid, 2 = right
     //int lever = RCS.GetLever();
@@ -439,38 +390,14 @@ void ERCMain(){
     // dist = (2pi*radius*CountsRecorded) / Counts per rev
     // dist = (2pi * 1.15 * n) / 48
     
-    
     // MILESTONE 5
     detectStart();
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
     // turn a little more to face the bin
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    turn(-DEFAULT_SPEED, getHeadingCounts(42.0));
     // put arm in down position
-    int lowerPos = 170, highPos = 120;
-    moveArm(highPos, lowerPos);
-    // move to bin
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(22, 1.8));
-    //moveForwardEncoder(DEFAULT_SPEED, getCounts(7.0));
-    // raise arm to start opening
-    moveArm(lowerPos, highPos);
-    // turn to rotate bin
-    turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    // lower arm to finish rotating
-    moveArm(highPos, lowerPos);
-    turn(DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    // do previous in reverse
-    turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    moveArm(lowerPos, highPos);
-    turn(DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    moveArm(highPos, lowerPos);
-    // go back to start
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(7.0));
-    turn(DEFAULT_SPEED, NINETYDEG_COUNTS/2);
-    turn(DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
-    
-
+    moveArm(80, 175);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts())
 
     //TestGUI();
     //FIND SERVO MIN AND MAX
