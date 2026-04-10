@@ -11,6 +11,7 @@
 #define ENCODER_MAX 48
 #define WHEEL_RADIUS 1.15
 #define ANY_LIGHT_VALUE 0.45
+#define RED_LIGHT_THRESHOLD 1.3
 #define NINETYDEG_COUNTS 48
 #define DEFAULT_SPEED 25
 #define RCS_WAIT_TIME_IN_SEC 0.30
@@ -54,16 +55,17 @@ int getCounts(float dist){
     return (ENCODER_MAX * dist) / (2 * PI * WHEEL_RADIUS);
 }
 
-// smoothly move arm
-void moveArm(int currentDegree, int targetDegree){
+// smoothly move arm ( cannot have currentdegree = targetDegree)
+void moveArm(int currentDegree, int targetDegree, int speedDiv){
     int direction = 1; //1 = up, -1 = down
     if(targetDegree < currentDegree){
         direction = -1;
     }
     for(int i = currentDegree + 1 * direction; abs(targetDegree-i) > 0; i+=(1*direction)){
         armServo.SetDegree(i);
-        Sleep(0.03);
+        Sleep(0.025/speedDiv);
     }
+    Sleep(0.3);
 
 }
 
@@ -71,15 +73,8 @@ void moveArm(int currentDegree, int targetDegree){
 void detectStart(){
         while((lightSensor.Value() > ANY_LIGHT_VALUE));
             LCD.Clear();
-            moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.75));
-            moveForwardEncoder(DEFAULT_SPEED, getCounts(8.0));
-            RCSPose* pos = RCS.RequestPosition();
-            LCD.WriteLine("RCS X:");
-            LCD.WriteLine(pos->x);
-            LCD.WriteLine("RCS Y:");
-            LCD.WriteLine(pos->y);
-        
-        
+            moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.9));
+            moveForwardEncoder(DEFAULT_SPEED, getCounts(0.9));
 }
 
 
@@ -152,15 +147,27 @@ void check_x(float x_coordinate, int orientation)
 }
 
 // gets the number of counts for the robot to move to the specified robots
+// if x or y are sent in as 0, set them to the rcs pos
 int getXYCountsRCS(float x, float y){
 
     RCSPose* pos = RCS.RequestPosition();
+    while(pos->x < 0){
+        Sleep(0.01);
+        pos = RCS.RequestPosition();
+        LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
+    }
+    LCD.Clear();
     LCD.WriteLine("RCS X:");
     LCD.WriteLine(pos->x);
     LCD.WriteLine("RCS Y:");
     LCD.WriteLine(pos->y);
-    Sleep(2.0);
     LCD.Clear();
+    if(x == 0){
+        x = pos->x;
+    }
+    if(y == 0){
+        y = pos->y;
+    }
     float underSqrt = pow((x - pos->x), 2) + pow((y - pos->y), 2.0);
     float hyp = sqrt(underSqrt);
     LCD.WriteLine("DISTANCE:");
@@ -170,10 +177,16 @@ int getXYCountsRCS(float x, float y){
     return getCounts(hyp);
 }
 
+
 // gives the rotation counts for the most optimal rotation direction to the given heading from the current heading
+// this seems to be off slightly
 int getHeadingCounts(float heading){
     RCSPose* pos = RCS.RequestPosition();
-    float degrees;
+    while(pos->x <= -1){
+        Sleep(0.25);
+        pos = RCS.RequestPosition();
+    }
+    float degrees = 0;
     if(abs(pos->heading - heading) > 180){ // turn counter-clockwise
         if(pos->heading > heading){
             degrees = (360 - pos->heading) + heading; //(360 - 300) + 40 = 100
@@ -187,6 +200,16 @@ int getHeadingCounts(float heading){
     // 300 -> 40 = 100 degree turn
     return (degrees/90) * NINETYDEG_COUNTS;
 }
+
+/*
+// TODO: COMPLETE THIS FUNCTION
+int getHeadingCounts(float x, float y){
+    RCSPose* pos = RCS.RequestPosition();
+
+    float radians = atan((pos->y - y)/ (pos->x - x));
+    return radians;
+}
+    */ 
 
 // Use RCS to get current y (inches)
 void check_y(float y_coordinate, int orientation)
@@ -299,7 +322,6 @@ void moveForwardEncoder(int percent, int counts) {
     left_motor.Stop();
 }
 
-
 void encoderExploration(float inches){
     LCD.Clear(BLACK);
     LCD.SetFontColor(WHITE);
@@ -344,26 +366,6 @@ void turn(int percent, int counts) {
 
 }
 
-void moveStraight(int percent, int counts) {
-
-    right_encoder.ResetCounts();
-    left_encoder.ResetCounts();
-
-    while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts){
-        right_motor.SetPercent(percent);
-        left_motor.SetPercent(-1 * percent); // left goes backwards
-    }
-    LCD.Clear();
-    LCD.WriteLine("Right Count:");
-    LCD.WriteLine(right_encoder.Counts());
-    LCD.WriteLine("Left Count:");
-    LCD.WriteLine(left_encoder.Counts());
-
-    right_motor.Stop();
-    left_motor.Stop();
-
-}
-
 void moveForwardsNoEncoder(int speed, float time){
     right_motor.SetPercent(speed);
     left_motor.SetPercent(-1 * speed);
@@ -372,61 +374,41 @@ void moveForwardsNoEncoder(int speed, float time){
     left_motor.Stop();
 }
 
-void movePlease(int speed){
-    right_motor.SetPercent(speed);
-    left_motor.SetPercent(-1 * speed);
-}
-
-void turnRightNoEncoder(int speed, float time){
-    
-    right_motor.SetPercent(-1 * speed);
-    left_motor.SetPercent(-1 * speed);
-    Sleep(time);
-    right_motor.Stop();
-    left_motor.Stop();
-    
-}
-
 // gets the number of counts for the given distance in inches
-// FIND THRESHOLD FIRST WITH WORKING CDS CELL
-void displayLightColor(float seconds){
-    Sleep(0.5);
-    // threshold for color detection
-    // RED > threshold > BLUE
-    LCD.SetFontSize(8);
-    float threshold = 1.3;
+// waits for the given number of seconds
+boolean displayLightColor(float seconds){
+    boolean red = false;
     int starttime = time(NULL);
     while(time(NULL) - starttime <= seconds){
-        float lightValue = lightSensor.Value();
-        if(lightValue > threshold){
-            LCD.WriteLine("RED");
-            turn(25, 10);
-            moveForwardsNoEncoder(25, 1.5);
+        if(lightSensor.Value() > RED_LIGHT_THRESHOLD){
+            LCD.SetFontColor(RED);
+            LCD.FillRectangle(0, 0, 319, 239);
+            Sleep(2.0);
+            red = true;
         } else{
-            LCD.WriteLine("BLUE");
-            turn(25, -10);
-            moveForwardsNoEncoder(25, 1.5);
+            LCD.SetFontColor(BLUE);
+            LCD.FillRectangle(0, 0, 319, 239);
+            Sleep(2.0);
         }
     }
-    
+    return red;
 }
 
 void testServo(){
     armServo.TouchCalibrate();
 }
 
-
 void ERCMain(){
 
     // RCS STUFF
-    RCS.InitializeTouchMenu("0150F4CPJ");
-    // RCSPose *pos;
-    RCS.DisableRateLimit();
+    // RCS.InitializeTouchMenu("0150F4CPJ");
+    // RCS.DisableRateLimit();
+
+    armServo.SetMin(500);
+    armServo.SetMax(2500);
 
     //0 = left, 1 = mid, 2 = right
     //int lever = RCS.GetLever();
-
-    
 
     int x, y;
     // encoder distance calc
@@ -442,42 +424,74 @@ void ERCMain(){
     
     // MILESTONE 5
     detectStart();
+    // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
+    // // turn a little more to face the bin
+    // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/8);
+    //turn(-DEFAULT_SPEED, getHeadingCounts(40.0));
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
-    // turn a little more to face the bin
-    turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    turn(-DEFAULT_SPEED, getHeadingCounts(42.0));
+    turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/5);
     // put arm in down position
-    int lowerPos = 170, highPos = 120;
-    moveArm(highPos, lowerPos);
+    int lowerPos = 180, highPos = 105;
     // move to bin
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(22, 1.8));
+    //moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(21.7, 4.0));
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(5.3));
     //moveForwardEncoder(DEFAULT_SPEED, getCounts(7.0));
-    // raise arm to start opening
-    moveArm(lowerPos, highPos);
+    // turn clockwise, starting from the high pos
+    int armSpeedDiv = 8;
+    float moveDist = 1.5;
+    moveArm(highPos, lowerPos, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(lowerPos, highPos, armSpeedDiv);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(highPos, lowerPos, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(lowerPos, highPos, armSpeedDiv);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(highPos, lowerPos, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(lowerPos, highPos, armSpeedDiv);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(highPos, lowerPos, armSpeedDiv);
+
+    //do this all in reverse to turn counterclockwise
+    moveArm(lowerPos, highPos, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(highPos, lowerPos, armSpeedDiv);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(lowerPos, highPos, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(highPos, lowerPos, armSpeedDiv - 1);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(lowerPos, highPos, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(highPos, lowerPos, armSpeedDiv - 1);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(lowerPos, highPos, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(highPos, lowerPos, armSpeedDiv - 1);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(lowerPos, highPos, armSpeedDiv);
+    
+
+
     // turn to rotate bin
-    turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/8);
+    //turn(DEFAULT_SPEED, getHeadingCounts(18));
     // lower arm to finish rotating
-    moveArm(highPos, lowerPos);
-    turn(DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    // do previous in reverse
-    turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    moveArm(lowerPos, highPos);
-    turn(DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    moveArm(highPos, lowerPos);
+    // moveArm(highPos, lowerPos);
+    // turn(-DEFAULT_SPEED, getHeadingCounts(22.0));
+    // // do previous in reverse
+    // turn(DEFAULT_SPEED, getHeadingCounts(18));
+    // moveArm(lowerPos, highPos);
+    // turn(-DEFAULT_SPEED, getHeadingCounts(22.0));
+    // moveArm(highPos, lowerPos);
     // go back to start
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(7.0));
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(5.3));
+    //turn(DEFAULT_SPEED, getHeadingCounts(300));
     turn(DEFAULT_SPEED, NINETYDEG_COUNTS/2);
-    turn(DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
+    // turn(DEFAULT_SPEED, NINETYDEG_COUNTS/8);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.2));
     
 
-
-    //TestGUI();
-    //FIND SERVO MIN AND MAX
-    
-    //testServo();
-    armServo.SetMin(500);
-    armServo.SetMax(2500);
 
     // MAKE SURE THE STARTING DEGREE IS KNOWN BEFORE MOVING
     // full up = 80
@@ -486,7 +500,6 @@ void ERCMain(){
     // while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
     // while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
     // moveArm(165, 80);
-
     // Servo testing code
     // Sleep(1.0);
     // armServo.SetDegree(180.0);
@@ -653,6 +666,39 @@ void ERCMain(){
     // (cds cell detected light), (getCorrectLight from cdscell)
     // turn approc 12.5 degrees either direction
     // (based on light from cds cell), turn(speed, 5)
+
+
+
+    // //TODO REDO THIS
+    // // Milestone 2 REDO
+    // detectStart();
+    // turn(DEFAULT_SPEED, getHeadingCounts(N));
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(20.0));
+    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 49));
+    // // make sure it understeers so that we turn the correct direction
+    // // maybe change how getHeadingCounts works so that we get the direction back as well********
+    // // maybe change getheading counts to instead take a coordinate instead of an angle 
+    // // OVERLOAD GETHEADINGCOUNTS FOR COORDINATES
+    // turn(-DEFAULT_SPEED, getHeadingCounts(W));
+    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(14.2,0));
+    // int directionMult = -1;
+    // if(displayLightColor){
+    //     directionMult = 1;
+    // }
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
+    // turn(DEFAULT_SPEED * directionMult, NINETYDEG_COUNTS/4.5);
+    // moveArm(80, 165, 2);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(1.0));
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
+    // turn(DEFAULT_SPEED, getHeadingCounts(E));
+    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 49));
+    // turn(DEFAULT_SPEED, getHeadingCounts(S));
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(30.0));
+
+    
+
+
+
 
 
     // moveForwardsNoEncoder(speed, 7.0);
