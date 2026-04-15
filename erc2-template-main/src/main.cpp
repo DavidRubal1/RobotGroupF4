@@ -13,8 +13,8 @@
 #define ANY_LIGHT_VALUE 0.45
 #define RED_LIGHT_THRESHOLD 1.3
 #define NINETYDEG_COUNTS 48
-#define DEFAULT_SPEED 29
-#define TURNING_SPEED 23
+#define DEFAULT_SPEED 37
+#define TURNING_SPEED 25
 #define RCS_WAIT_TIME_IN_SEC 0.2
 
 // Defines for pulsing the robot
@@ -30,7 +30,7 @@
 
 // heading keywords
 #define N 90
-#define NE 
+#define NE 45
 #define NW 135
 // need special code to handle 0
 #define E 0
@@ -168,7 +168,7 @@ int getHeadingCounts(float heading){
     return counts;
 }
 
-// ONLY CALL WITH THE CARIDNAL DIRECTIONS OR JUST NOT SOMETHING CLOSE TO 0!
+// Only call with headings > 10 or == 0 to account for RCS inconsistency
 void headingCorrection(float heading){
     RCSPose* pos = RCS.RequestPosition();
     // account for exactly 0
@@ -270,13 +270,13 @@ boolean displayLightColor(float seconds){
     while(time(NULL) - starttime <= seconds){
         if(lightSensor.Value() > RED_LIGHT_THRESHOLD){
             LCD.SetFontColor(RED);
-            LCD.FillRectangle(0, 0, 319, 239);
-            Sleep(1.5);
+            // LCD.FillRectangle(0, 0, 319, 239);
+            // Sleep(1.5);
             red = true;
         } else{
             LCD.SetFontColor(BLUE);
-            LCD.FillRectangle(0, 0, 319, 239);
-            Sleep(1.5);
+            // LCD.FillRectangle(0, 0, 319, 239);
+            // Sleep(1.5);
         }
     }
     return red;
@@ -325,7 +325,7 @@ void ERCMain(){
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(24, 0));
     //moveForwardEncoder(DEFAULT_SPEED, getCounts(7.0));
     // turn clockwise, starting from the high pos
-    int armSpeedDiv = 18;
+    int armSpeedDiv = 30;
     float moveDist = 1.5;
     // make these into function calls to prevent copied code
     moveArm(highPos, lowerPos, armSpeedDiv);
@@ -341,7 +341,19 @@ void ERCMain(){
     moveArm(lowerPos, highPos, armSpeedDiv);
     moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
     moveArm(highPos, lowerPos, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
     moveArm(lowerPos, highPos, armSpeedDiv);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // correcting turn to account for initial oversteer
+    turn(TURNING_SPEED, 2);
+    moveArm(highPos, lowerPos, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(lowerPos, highPos, armSpeedDiv);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(highPos, lowerPos, armSpeedDiv);
+    moveArm(lowerPos, highPos, armSpeedDiv);
+
+
     // turn to apple bucket
     int appleLowPos = 157, appleHighPos = 105, appleSpeed = 2;
     turn(TURNING_SPEED, NINETYDEG_COUNTS/2);
@@ -349,12 +361,12 @@ void ERCMain(){
     // Call RCS to correct heading and position
     // offset turning slightly to not go on the ramp
     turn(TURNING_SPEED, getHeadingCounts(100));
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 19.1));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 18.5));
     // turn to bucket
     turn(-TURNING_SPEED, (NINETYDEG_COUNTS*2)/3);
     turn(-TURNING_SPEED, getHeadingCounts(W));
     
-    // back up to allow arm to come down
+    // back up to allow arm to come down to pick up basket
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
     moveArm(highPos, appleLowPos, appleSpeed);
     int toBucketCounts = getXYCountsRCS(13.75, 0);
@@ -368,7 +380,7 @@ void ERCMain(){
     // go up ramp
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 43.75));
     turn(-TURNING_SPEED, NINETYDEG_COUNTS);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(1.0));
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(2.0));
     headingCorrection(W);
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(24.5, 0));
     // turn towards lower basket
@@ -379,13 +391,15 @@ void ERCMain(){
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.75));
     turn(TURNING_SPEED, 1);
     moveArm(160, 150, 2);
-    moveForwardEncoder(-(DEFAULT_SPEED+10), getCounts(2.0));
+    moveForwardEncoder(-(DEFAULT_SPEED+10), getCounts(1.3));
     moveArm(150, appleHighPos, 5);
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 61));
     // go to levers, any lever counts for primary points
     turn(-TURNING_SPEED, NINETYDEG_COUNTS);
     headingCorrection(W);
-    turn(TURNING_SPEED, NINETYDEG_COUNTS/8 + 1);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(4));
+    //possibly turn slightly to the right if off still
+
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(4.1));
     // flick lever down
     moveArm(appleHighPos, lowerPos, armSpeedDiv);
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
@@ -398,41 +412,27 @@ void ERCMain(){
     headingCorrection(S);
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 50));
     moveArm(appleHighPos, appleLowPos, armSpeedDiv);
-    turn(TURNING_SPEED + 10, NINETYDEG_COUNTS/2 + 10);
+    turn(TURNING_SPEED + 15, NINETYDEG_COUNTS/2 + 10);
     // back up to humidifier interface
     moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(0, 45));
+    moveArm(appleLowPos, highPos, 8);
     // turn to light and move to it
-    headingCorrection(N);
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(14.3, 0));
-    // detect the light color and move turn in the appropriate direction
-    int directionMult = -1; 
-    if(displayLightColor(3.0)){
-        directionMult = 1;
-    }
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
-    turn(DEFAULT_SPEED * directionMult, NINETYDEG_COUNTS/9);
-    // move arm down to press button
-    moveArm(80, 170, 3);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(2.5));
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.5));
-    moveArm(170, 80, 3);
-    // turn back in the same direction
-    turn(-DEFAULT_SPEED * directionMult, NINETYDEG_COUNTS/9);
-    // back up to the ramp
-    moveForwardEncoder(-DEFAULT_SPEED, 28.2 - 14.34);
+    headingCorrection(W);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(9.0));   
+    // back to the ramp
+    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(28, 0));
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS);
     // go down ramp
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(25.0));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 4.0));
+    // TODO: add correcting code to redirect to button
+    // TODO: make sure timing is good
+    // TODO: make sure number of RCS calls do not exceed 50 (looks good so far)
     LCD.Clear();
     LCD.WriteLine(RCS.RequestsRemaining());
 
 
 
     
-
-
-
-
 
 
     
