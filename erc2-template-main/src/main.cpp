@@ -13,7 +13,8 @@
 #define ANY_LIGHT_VALUE 0.45
 #define RED_LIGHT_THRESHOLD 1.3
 #define NINETYDEG_COUNTS 48
-#define DEFAULT_SPEED 25
+#define DEFAULT_SPEED 28
+#define TURNING_SPEED 25
 #define RCS_WAIT_TIME_IN_SEC 0.30
 
 // Defines for pulsing the robot
@@ -28,15 +29,15 @@
 #define BACKWARDS 1
 
 // heading keywords
-#define N 270
-#define NE 225
-#define NW 315
+#define N 90
+#define NE 
+#define NW 135
 // need special code to handle 0
-#define E 180
-#define S 90
-#define SE 135
-#define SW 45
-#define W 0
+#define E 0
+#define S 270
+#define SE 
+#define SW 
+#define W 180
 
 DigitalEncoder right_encoder(FEHIO::Pin8);
 DigitalEncoder left_encoder(FEHIO::Pin10);
@@ -71,10 +72,11 @@ void moveArm(int currentDegree, int targetDegree, int speedDiv){
 
 // pauses until the start light haas been detected by the CdS Cell
 void detectStart(){
+    Sleep(0.75);
         while((lightSensor.Value() > ANY_LIGHT_VALUE));
             LCD.Clear();
-            moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.9));
-            moveForwardEncoder(DEFAULT_SPEED, getCounts(0.9));
+            moveForwardsNoEncoder(-35, 0.75);
+            moveForwardEncoder(35, getCounts(1.0));
 }
 
 
@@ -150,12 +152,24 @@ void check_x(float x_coordinate, int orientation)
 // if x or y are sent in as 0, set them to the rcs pos
 int getXYCountsRCS(float x, float y){
 
+    Sleep(0.30);
     RCSPose* pos = RCS.RequestPosition();
-    while(pos->x < 0){
-        Sleep(0.01);
+    int count = 0;
+    while(pos->x <= 0){
+        Sleep(0.30);
         pos = RCS.RequestPosition();
+        LCD.SetFontColor(RED);
         LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
+        LCD.SetFontColor(WHITE);
+        count++;
+        if(count > 7){
+            LCD.SetFontColor(RED);
+            LCD.WriteRC("TOO MANY INVALID RCS VALUES, RETURN 0", 5, 5);
+            LCD.SetFontColor(WHITE);
+            return 0;
+        }
     }
+    
     LCD.Clear();
     LCD.WriteLine("RCS X:");
     LCD.WriteLine(pos->x);
@@ -177,30 +191,67 @@ int getXYCountsRCS(float x, float y){
     return getCounts(hyp);
 }
 
-
 // gives the rotation counts for the most optimal rotation direction to the given heading from the current heading
 // this seems to be off slightly
 int getHeadingCounts(float heading){
+    //90, given 135
+    Sleep(0.1);
     RCSPose* pos = RCS.RequestPosition();
-    while(pos->x <= -1){
-        Sleep(0.25);
+    int count = 0;
+    while(pos->x <= 0){
+        Sleep(0.30);
         pos = RCS.RequestPosition();
+        LCD.SetFontColor(RED);
+        LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
+        LCD.SetFontColor(WHITE);
+        count++;
+        if(count > 7){
+            LCD.SetFontColor(RED);
+            LCD.WriteRC("TOO MANY INVALID RCS VALUES, RETURN 0", 5, 5);
+            LCD.SetFontColor(WHITE);
+            return 0;
+        }
     }
     float degrees = 0;
-    if(abs(pos->heading - heading) > 180){ // turn counter-clockwise
-        if(pos->heading > heading){
-            degrees = (360 - pos->heading) + heading; //(360 - 300) + 40 = 100
-        }else{
-            degrees = (360 - heading) + pos->heading;
+    //(90 - 135 = 45)
+    if(abs(pos->heading - heading) > 180){  // passing 0
+        if(pos->heading > heading){// turn counter-clockwise
+            degrees = (360 - pos->heading) + heading;
+        }else{ 
+            degrees = (360 - heading) + pos->heading; 
         }
     } else{ // turn clockwise
-        degrees = abs(pos->heading - heading);
+        degrees = abs(pos->heading - heading); // 135 - 90 = 45
     }
 
     // 300 -> 40 = 100 degree turn
-    return (degrees/90) * NINETYDEG_COUNTS;
+    int counts = (degrees/90.0) * NINETYDEG_COUNTS;
+    LCD.WriteLine("HEADING CURRENT");
+    LCD.WriteLine(pos->heading);
+    LCD.WriteLine("HEADING FINAL");
+    LCD.WriteLine(heading);
+    LCD.WriteLine("COUNTS");
+    LCD.WriteLine(counts);
+    return counts;
 }
 
+// ONLY CALL WITH THE CARIDNAL DIRECTIONS OR JUST NOT SOMETHING CLOSE TO 0!
+void headingCorrection(float heading){
+    RCSPose* pos = RCS.RequestPosition();
+    // account for exactly 0
+    if(heading == 0){
+        if(pos->heading < 358){
+            turn(-TURNING_SPEED, getHeadingCounts(heading));
+        } else if(pos->heading > 2){
+            turn(TURNING_SPEED, getHeadingCounts(heading));
+        }
+    }
+    if(pos->heading < heading - 2){
+        turn(-TURNING_SPEED, getHeadingCounts(heading));
+    } else if(pos->heading > heading + 2){
+        turn(TURNING_SPEED, getHeadingCounts(heading));
+    }
+}
 /*
 // TODO: COMPLETE THIS FUNCTION
 int getHeadingCounts(float x, float y){
@@ -248,37 +299,52 @@ void check_heading(float heading)
 
 
     RCSPose* pos = RCS.RequestPosition();
+    while(pos->x < 0){
+        Sleep(0.30);
+        pos = RCS.RequestPosition();
+        LCD.SetFontColor(RED);
+        LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
+        LCD.SetFontColor(WHITE);
+    }
     int correctionCounts = 10;
+    int power = PULSE_POWER;
     // maybe i decrease the correction or power over time if it keeps over-overcorrecting
 
 
     for (int i = 0; i < 10; i++) {
-        // case for
+        // case for 0
         if(heading == W){
-            while((pos->heading > -1) && (0 < (pos->heading) && (pos->heading) < 3) || 
-                    ((pos->heading) > 360-3)){
-                        if(pos->heading < 3 && pos->heading > 0){
-                            turn_counterclockwise(PULSE_POWER, correctionCounts);
-                        } else{
-                            turn_counterclockwise(-PULSE_POWER, correctionCounts);
-                        }
+            while((pos->heading > -1) && ((0 < (pos->heading) && (pos->heading) < 2) || ((pos->heading) > 360-2))){
+                if(pos->heading < 3 && pos->heading > 0){
+                    turn_counterclockwise(power, correctionCounts);
+                } else{
+                    turn_counterclockwise(-power, correctionCounts);
+                }
             }
         }
         else{
-            while((pos->heading > -1) && (pos->heading < heading - 3 || pos->heading > heading + 3)) {
+            while((pos->heading > -1) && (pos->heading < heading - 2 || pos->heading > heading + 2)) {
                 if(pos->heading> heading)
                 {
-                    turn_counterclockwise(-1 * PULSE_POWER, correctionCounts);
+                    turn_counterclockwise(-power, correctionCounts);
                 }
                 else if(pos->heading < heading)
                 {
-                    turn_counterclockwise(PULSE_POWER, correctionCounts);
+                    turn_counterclockwise(power, correctionCounts);
                 }
-                Sleep(RCS_WAIT_TIME_IN_SEC);
-                
-                pos = RCS.RequestPosition();
+    
             }
         }
+        pos = RCS.RequestPosition();
+        while(pos->x < 0){
+            Sleep(0.30);
+            pos = RCS.RequestPosition();
+            LCD.SetFontColor(RED);
+            LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
+            LCD.SetFontColor(WHITE);
+        }
+        Sleep(RCS_WAIT_TIME_IN_SEC);
+        power -= 1;
 
     }   
 
@@ -383,12 +449,12 @@ boolean displayLightColor(float seconds){
         if(lightSensor.Value() > RED_LIGHT_THRESHOLD){
             LCD.SetFontColor(RED);
             LCD.FillRectangle(0, 0, 319, 239);
-            Sleep(2.0);
+            Sleep(1.5);
             red = true;
         } else{
             LCD.SetFontColor(BLUE);
             LCD.FillRectangle(0, 0, 319, 239);
-            Sleep(2.0);
+            Sleep(1.5);
         }
     }
     return red;
@@ -401,8 +467,11 @@ void testServo(){
 void ERCMain(){
 
     // RCS STUFF
-    // RCS.InitializeTouchMenu("0150F4CPJ");
-    // RCS.DisableRateLimit();
+    RCS.InitializeTouchMenu("0150F4CPJ");
+    //TODO: remove rate delimiter
+    RCS.DisableRateLimit();
+    //************************* */
+    WaitForFinalAction();
 
     armServo.SetMin(500);
     armServo.SetMax(2500);
@@ -420,25 +489,23 @@ void ERCMain(){
     // make a method to convert inches to counts
     // dist = (2pi*radius*CountsRecorded) / Counts per rev
     // dist = (2pi * 1.15 * n) / 48
-    
-    
-    // MILESTONE 5
+
+
+    // QUALIFIERS
     detectStart();
-    // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
-    // // turn a little more to face the bin
-    // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    //turn(-DEFAULT_SPEED, getHeadingCounts(40.0));
-    turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
-    turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/5);
+    // Milestone 5 code to spin compost bin
+    turn(-TURNING_SPEED, getHeadingCounts(193));
+    //headingCorrection(193);
     // put arm in down position
     int lowerPos = 180, highPos = 105;
     // move to bin
     //moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(21.7, 4.0));
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(5.3));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(24, 0));
     //moveForwardEncoder(DEFAULT_SPEED, getCounts(7.0));
     // turn clockwise, starting from the high pos
-    int armSpeedDiv = 8;
+    int armSpeedDiv = 10;
     float moveDist = 1.5;
+    // make these into function calls to prevent copied code
     moveArm(highPos, lowerPos, armSpeedDiv);
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
     moveArm(lowerPos, highPos, armSpeedDiv);
@@ -452,65 +519,138 @@ void ERCMain(){
     moveArm(lowerPos, highPos, armSpeedDiv);
     moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
     moveArm(highPos, lowerPos, armSpeedDiv);
+    moveArm(lowerPos, highPos, armSpeedDiv);
+    // turn to apple bucket
+    int appleLowPos = 152, appleHighPos = 97, appleSpeed = 2;
+    turn(TURNING_SPEED, NINETYDEG_COUNTS/2);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(0.5));
+    // Call RCS to correct heading and position
+    // offset turning slightly to not go on the ramp
+    turn(TURNING_SPEED, getHeadingCounts(100));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 19.2));
+    // turn to bucket
+    turn(-TURNING_SPEED, (NINETYDEG_COUNTS*2)/3);
+    turn(-TURNING_SPEED, getHeadingCounts(W));
+    // back up to allow arm to come down
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
+    moveArm(highPos, appleLowPos, appleSpeed);
+    int toBucketCounts = getXYCountsRCS(13.75, 0);
+    moveForwardEncoder(DEFAULT_SPEED, toBucketCounts);
+    moveArm(appleLowPos, appleHighPos, appleSpeed);
+    moveForwardEncoder(-DEFAULT_SPEED, toBucketCounts);
+    turn(TURNING_SPEED, NINETYDEG_COUNTS/3);
+    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(28, 0));
+    turn(TURNING_SPEED, getHeadingCounts(N));
+    headingCorrection(N);
+    // go up ramp
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 43.75));
+    turn(-TURNING_SPEED, NINETYDEG_COUNTS);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(1.0));
+    headingCorrection(W);
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(23.5, 0));
+    // turn towards lower basket
+    turn(TURNING_SPEED, NINETYDEG_COUNTS);
+    headingCorrection(N);
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 31.2));
+    moveArm(appleHighPos, 180, 2);
+    moveForwardEncoder(-(DEFAULT_SPEED+10), getCounts(4.0));
+    moveArm(195, appleHighPos, 5);
+    // go to levers, any lever counts for primary points
+    turn(-TURNING_SPEED, NINETYDEG_COUNTS);
+    headingCorrection(W);
+    turn(TURNING_SPEED, NINETYDEG_COUNTS/8);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(5));
+    moveArm(appleHighPos, lowerPos, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(2.0));
+    moveArm(lowerPos, appleHighPos, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.5));
+    // go to open window with arm?
+    turn(-TURNING_SPEED, NINETYDEG_COUNTS);
+    headingCorrection(S);
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 50));
+    moveArm(appleHighPos, appleLowPos, armSpeedDiv);
+    turn(TURNING_SPEED + 10, NINETYDEG_COUNTS/2);
+    // back up to humidifier interface
+    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(0, 45));
+    LCD.Clear();
+    LCD.WriteLine(RCS.RequestsRemaining());
 
-    //do this all in reverse to turn counterclockwise
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(highPos, lowerPos, armSpeedDiv);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(highPos, lowerPos, armSpeedDiv - 1);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(highPos, lowerPos, armSpeedDiv - 1);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(highPos, lowerPos, armSpeedDiv - 1);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(lowerPos, highPos, armSpeedDiv);
+
+
     
 
 
-    // turn to rotate bin
-    //turn(DEFAULT_SPEED, getHeadingCounts(18));
-    // lower arm to finish rotating
-    // moveArm(highPos, lowerPos);
-    // turn(-DEFAULT_SPEED, getHeadingCounts(22.0));
-    // // do previous in reverse
-    // turn(DEFAULT_SPEED, getHeadingCounts(18));
-    // moveArm(lowerPos, highPos);
-    // turn(-DEFAULT_SPEED, getHeadingCounts(22.0));
-    // moveArm(highPos, lowerPos);
-    // go back to start
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(5.3));
-    //turn(DEFAULT_SPEED, getHeadingCounts(300));
-    turn(DEFAULT_SPEED, NINETYDEG_COUNTS/2);
-    // turn(DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.2));
+
+
+
+
     
-
-
-    // MAKE SURE THE STARTING DEGREE IS KNOWN BEFORE MOVING
-    // full up = 80
-    // forwards = 165
-    // moveArm(80, 165);
-    // while(!LCD.Touch(&x,&y)); //Wait for screen to be pressed
-    // while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
-    // moveArm(165, 80);
-    // Servo testing code
-    // Sleep(1.0);
-    // armServo.SetDegree(180.0);
-    // Sleep(1.0);
-    // armServo.SetDegree(0);
-    // Sleep(1.0);
-    // armServo.SetDegree(180.0);
-    // built in MIN: 500
-    //MAX: 2500
-    //writeLight();
-
+    // MILESTONE 5  -  26/20
+    // detectStart();
+    // // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
+    // // // turn a little more to face the bin
+    // // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/8);
+    // //turn(-DEFAULT_SPEED, getHeadingCounts(40.0));
+    // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
+    // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/5);
+    // // put arm in down position
+    // int lowerPos = 180, highPos = 105;
+    // // move to bin
+    // //moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(21.7, 4.0));
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(5.3));
+    // //moveForwardEncoder(DEFAULT_SPEED, getCounts(7.0));
+    // // turn clockwise, starting from the high pos
+    // int armSpeedDiv = 8;
+    // float moveDist = 1.5;
+    // // make these into function calls to prevent copied code
+    // moveArm(highPos, lowerPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv);
+    // //do this all in reverse to turn counterclockwise
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv - 1);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv - 1);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv - 1);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // // turn to rotate bin
+    // // turn(DEFAULT_SPEED, getHeadingCounts(18));
+    // // lower arm to finish rotating
+    // // moveArm(highPos, lowerPos);
+    // // turn(-DEFAULT_SPEED, getHeadingCounts(22.0));
+    // // // do previous in reverse
+    // // turn(DEFAULT_SPEED, getHeadingCounts(18));
+    // // moveArm(lowerPos, highPos);
+    // // turn(-DEFAULT_SPEED, getHeadingCounts(22.0));
+    // // moveArm(highPos, lowerPos);
+    // // go back to start
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(5.3));
+    // //turn(DEFAULT_SPEED, getHeadingCounts(300));
+    // turn(DEFAULT_SPEED, NINETYDEG_COUNTS/2);
+    // // turn(DEFAULT_SPEED, NINETYDEG_COUNTS/8);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.2));
 
     // // // Milestone 4 - 4/20, picked
     // // we need arm movement code, more precise movement code (RCS) to account for slipping, and 
@@ -559,8 +699,6 @@ void ERCMain(){
     // moveForwardEncoder(DEFAULT_SPEED, getCounts(5.0));
     // moveArm(100, 165);
 
-    
-
     // 3/23/26 movement test - GOOD
     // moveForwardsNoEncoder(speed, 3.0);
     // turnRightNoEncoder(25, 5.0);
@@ -593,17 +731,6 @@ void ERCMain(){
     // while(LCD.Touch(&x,&y)); //Wait for screen to be unpressed
     // writeLight();
 
-    //turning test
-    // while(true){
-    //     turn(speed, 43);
-    //     Sleep(0.2);
-    //     turn(-speed, 43);
-    //     Sleep(0.2);
-    // }
-
-    // test turning to find position for RCS
-    //turn(-speed, NINETYDEG_COUNTS);
-
 
     // 3/24/26 CdS cell testing
     //writeLight();
@@ -634,7 +761,6 @@ void ERCMain(){
     // 11.5 inches from top of ramp to middle of line
     // 8? inches up to the light,
     // 8.5 ish inches to the lights, make sure the robot actually pushes it
-
     // MILESTONE 2 CODE
     // (cds cell detected light)
     // moveForwardsNoEncoder(-speed, 1.0);
@@ -667,35 +793,58 @@ void ERCMain(){
     // turn approc 12.5 degrees either direction
     // (based on light from cds cell), turn(speed, 5)
 
-
-
     // //TODO REDO THIS
     // // Milestone 2 REDO
     // detectStart();
     // turn(DEFAULT_SPEED, getHeadingCounts(N));
-    // moveForwardEncoder(DEFAULT_SPEED, getCounts(20.0));
-    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 49));
+    // check_heading(N);
+    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 47));
     // // make sure it understeers so that we turn the correct direction
     // // maybe change how getHeadingCounts works so that we get the direction back as well********
     // // maybe change getheading counts to instead take a coordinate instead of an angle 
     // // OVERLOAD GETHEADINGCOUNTS FOR COORDINATES
     // turn(-DEFAULT_SPEED, getHeadingCounts(W));
-    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(14.2,0));
-    // int directionMult = -1;
-    // if(displayLightColor){
+    // check_heading(W);
+    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(14.3,0));
+    // int directionMult = -1; 
+    // if(displayLightColor(3.0)){
     //     directionMult = 1;
     // }
     // moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
-    // turn(DEFAULT_SPEED * directionMult, NINETYDEG_COUNTS/4.5);
-    // moveArm(80, 165, 2);
-    // moveForwardEncoder(DEFAULT_SPEED, getCounts(1.0));
-    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
+    // turn(DEFAULT_SPEED * directionMult, NINETYDEG_COUNTS/9);
+    // moveArm(80, 170, 3);
+    // moveForwardEncoder(35, getCounts(2.5));
+    // moveForwardEncoder(-35, getCounts(2.5));
+    // moveArm(170, 80, 3);
     // turn(DEFAULT_SPEED, getHeadingCounts(E));
-    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 49));
+    // check_heading(E);
+    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(28.2, 0));
     // turn(DEFAULT_SPEED, getHeadingCounts(S));
-    // moveForwardEncoder(DEFAULT_SPEED, getCounts(30.0));
+    // turn(DEFAULT_SPEED, getHeadingCounts(S));
+    // turn(DEFAULT_SPEED, getHeadingCounts(S));
+    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(30, 3));
 
-    
+    // // MILESTONE 2 NO-RCS BACKUP
+    // // make sure to disable RCS initialization for this one
+    // detectStart();
+    // turn(DEFAULT_SPEED, NINETYDEG_COUNTS/2);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(25.0));
+    // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(28.2 - 14.34));
+    // int directionMult = -1; 
+    // if(displayLightColor(3.0)){
+    //     directionMult = 1;
+    // }
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
+    // turn(DEFAULT_SPEED * directionMult, NINETYDEG_COUNTS/9);
+    // moveArm(80, 170, 3);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(2.5));
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.5));
+    // moveArm(170, 80, 3);
+    // turn(-DEFAULT_SPEED * directionMult, NINETYDEG_COUNTS/9);
+    // moveForwardEncoder(-DEFAULT_SPEED, 28.2 - 14.34);
+    // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(25.0));
 
 
 
@@ -735,7 +884,6 @@ void ERCMain(){
     // moveForwards(speed, 135);
 
     
-        
         // moveArm(down to pick up basket)
         // moveForwards(speed, countToApples);
         // moveArm(up to pick up basket);

@@ -65,6 +65,7 @@ void moveArm(int currentDegree, int targetDegree, int speedDiv){
         armServo.SetDegree(i);
         Sleep(0.025/speedDiv);
     }
+    Sleep(0.3);
 
 }
 
@@ -72,8 +73,8 @@ void moveArm(int currentDegree, int targetDegree, int speedDiv){
 void detectStart(){
         while((lightSensor.Value() > ANY_LIGHT_VALUE));
             LCD.Clear();
-            moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.85));
-            moveForwardEncoder(DEFAULT_SPEED, getCounts(0.85));
+            moveForwardEncoder(-35, getCounts(0.9));
+            moveForwardEncoder(35, getCounts(0.9));
 }
 
 
@@ -153,7 +154,9 @@ int getXYCountsRCS(float x, float y){
     while(pos->x < 0){
         Sleep(0.01);
         pos = RCS.RequestPosition();
+        LCD.SetFontColor(RED);
         LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
+        LCD.SetFontColor(WHITE);
     }
     LCD.Clear();
     LCD.WriteLine("RCS X:");
@@ -421,40 +424,57 @@ void ERCMain(){
     // dist = (2pi * 1.15 * n) / 48
     
     
-    // MILESTONE 5
-    detectStart();
+    // MILESTONE 5  -  25/20
+    // detectStart();
+    // // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
+    // // // turn a little more to face the bin
+    // // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/8);
+    // //turn(-DEFAULT_SPEED, getHeadingCounts(40.0));
     // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
-    // // turn a little more to face the bin
-    // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    turn(-DEFAULT_SPEED, getHeadingCounts(20));
-    // put arm in down position
-    int lowerPos = 172, highPos = 129;
-    // move to bin
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(21.7, 4.0));
-    //moveForwardEncoder(DEFAULT_SPEED, getCounts(7.0));
-    // turn clockwise, starting from the high pos
-    int armSpeedDiv = 3;
-    moveArm(highPos, lowerPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(1.0));
-    moveArm(highPos, lowerPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(1.0));
-    moveArm(highPos, lowerPos, armSpeedDiv - 1);
+    // turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/5);
+    // // put arm in down position
+    // int lowerPos = 180, highPos = 105;
+    // // move to bin
+    // //moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(21.7, 4.0));
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(5.3));
+    // //moveForwardEncoder(DEFAULT_SPEED, getCounts(7.0));
+    // // turn clockwise, starting from the high pos
+    // int armSpeedDiv = 8;
+    // float moveDist = 1.5;
 
-    //do this all in reverse to turn counterclockwise
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(1.0));
-    moveArm(highPos, lowerPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(1.0));
-    moveArm(highPos, lowerPos, armSpeedDiv - 1);
+    // // make these into function calls to prevent copied code
+    // moveArm(highPos, lowerPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv);
 
-
+    // //do this all in reverse to turn counterclockwise
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv - 1);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv - 1);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(highPos, lowerPos, armSpeedDiv - 1);
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    // moveArm(lowerPos, highPos, armSpeedDiv);
     // turn to rotate bin
     //turn(DEFAULT_SPEED, getHeadingCounts(18));
     // lower arm to finish rotating
@@ -465,12 +485,12 @@ void ERCMain(){
     // moveArm(lowerPos, highPos);
     // turn(-DEFAULT_SPEED, getHeadingCounts(22.0));
     // moveArm(highPos, lowerPos);
-    // go back to start
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(7.0));
-    turn(DEFAULT_SPEED, getHeadingCounts(300));
+    // // go back to start
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(5.3));
+    // //turn(DEFAULT_SPEED, getHeadingCounts(300));
     // turn(DEFAULT_SPEED, NINETYDEG_COUNTS/2);
-    // turn(DEFAULT_SPEED, NINETYDEG_COUNTS/8);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
+    // // turn(DEFAULT_SPEED, NINETYDEG_COUNTS/8);
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.2));
     
 
 
@@ -650,31 +670,31 @@ void ERCMain(){
 
 
 
-    // //TODO REDO THIS
-    // // Milestone 2 REDO
-    // detectStart();
-    // turn(DEFAULT_SPEED, getHeadingCounts(N));
-    // moveForwardEncoder(DEFAULT_SPEED, getCounts(20.0));
-    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 49));
-    // // make sure it understeers so that we turn the correct direction
-    // // maybe change how getHeadingCounts works so that we get the direction back as well********
-    // // maybe change getheading counts to instead take a coordinate instead of an angle 
-    // // OVERLOAD GETHEADINGCOUNTS FOR COORDINATES
-    // turn(-DEFAULT_SPEED, getHeadingCounts(W));
-    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(14.2,0));
-    // int directionMult = -1;
-    // if(displayLightColor){
-    //     directionMult = 1;
-    // }
-    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
-    // turn(DEFAULT_SPEED * directionMult, NINETYDEG_COUNTS/4.5);
-    // moveArm(80, 165, 2);
-    // moveForwardEncoder(DEFAULT_SPEED, getCounts(1.0));
-    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
-    // turn(DEFAULT_SPEED, getHeadingCounts(E));
-    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 49));
-    // turn(DEFAULT_SPEED, getHeadingCounts(S));
-    // moveForwardEncoder(DEFAULT_SPEED, getCounts(30.0));
+    //TODO REDO THIS
+    // Milestone 2 REDO
+    detectStart();
+    turn(DEFAULT_SPEED, getHeadingCounts(N));
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(20.0));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 49));
+    // make sure it understeers so that we turn the correct direction
+    // maybe change how getHeadingCounts works so that we get the direction back as well********
+    // maybe change getheading counts to instead take a coordinate instead of an angle 
+    // OVERLOAD GETHEADINGCOUNTS FOR COORDINATES
+    turn(-DEFAULT_SPEED, getHeadingCounts(W));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(14.2,0));
+    int directionMult = -1;
+    if(displayLightColor){
+        directionMult = 1;
+    }
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
+    turn(DEFAULT_SPEED * directionMult, NINETYDEG_COUNTS/4.5);
+    moveArm(80, 165, 2);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(1.0));
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
+    turn(DEFAULT_SPEED, getHeadingCounts(E));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 49));
+    turn(DEFAULT_SPEED, getHeadingCounts(S));
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(30.0));
 
     
 
