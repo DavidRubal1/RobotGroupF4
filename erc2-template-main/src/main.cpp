@@ -291,7 +291,7 @@ void ERCMain(){
     // RCS STUFF
     RCS.InitializeTouchMenu("0150F4CPJ");
     //TODO: remove rate delimiter
-    RCS.DisableRateLimit();
+    //RCS.DisableRateLimit();
     //************************* */
     WaitForFinalAction();
 
@@ -316,7 +316,7 @@ void ERCMain(){
     // QUALIFIERS
     detectStart();
     // Milestone 5 code to spin compost bin
-    turn(-TURNING_SPEED, getHeadingCounts(202));
+    turn(-TURNING_SPEED, getHeadingCounts(201));
     //headingCorrection(193);
     // put arm in down position
     int lowerPos = 185, highPos = 102;
@@ -345,7 +345,7 @@ void ERCMain(){
     moveArm(lowerPos, highPos, armSpeedDiv);
     moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
     // correcting turn to account for initial oversteer
-    turn(TURNING_SPEED, 2);
+    turn(TURNING_SPEED, 1);
     moveArm(highPos, lowerPos, armSpeedDiv);
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
     moveArm(lowerPos, highPos, armSpeedDiv);
@@ -393,13 +393,15 @@ void ERCMain(){
     moveArm(160, 150, 2);
     moveForwardEncoder(-(DEFAULT_SPEED+10), getCounts(1.3));
     moveArm(150, appleHighPos, 5);
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 61));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 61.3));
     // go to levers, any lever counts for primary points
     turn(-TURNING_SPEED, NINETYDEG_COUNTS);
     headingCorrection(W);
     //possibly turn slightly to the right if off still
 
     moveForwardEncoder(DEFAULT_SPEED, getCounts(4.1));
+    // slight correction
+    turn(TURNING_SPEED, 1);
     // flick lever down
     moveArm(appleHighPos, lowerPos, armSpeedDiv);
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
@@ -412,7 +414,7 @@ void ERCMain(){
     headingCorrection(S);
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 50));
     moveArm(appleHighPos, appleLowPos, armSpeedDiv);
-    turn(TURNING_SPEED + 15, NINETYDEG_COUNTS/2 + 10);
+    turn(TURNING_SPEED + 18, NINETYDEG_COUNTS/2 + 10);
     // back up to humidifier interface
     moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(0, 45));
     moveArm(appleLowPos, highPos, 8);
@@ -420,10 +422,12 @@ void ERCMain(){
     headingCorrection(W);
     moveForwardEncoder(DEFAULT_SPEED, getCounts(9.0));   
     // back to the ramp
-    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(28, 0));
+    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(27.6, 0));
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS);
     // go down ramp
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 4.0));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 8.0));
+    turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(2.0));
     // TODO: add correcting code to redirect to button
     // TODO: make sure timing is good
     // TODO: make sure number of RCS calls do not exceed 50 (looks good so far)
