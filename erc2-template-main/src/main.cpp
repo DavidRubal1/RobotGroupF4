@@ -46,6 +46,7 @@ void moveArm(int currentDegree, int targetDegree, int speedDiv){
     Sleep(0.3);
 
 }
+
 void moveForwardEncoder(int percent, int counts) {
     right_encoder.ResetCounts();
     left_encoder.ResetCounts();
@@ -68,9 +69,9 @@ void moveForwardsNoEncoder(int speed, float time){
 void detectStart(){
     Sleep(0.1);
         while((lightSensor.Value() > ANY_LIGHT_VALUE));
-            LCD.Clear();
-            moveForwardsNoEncoder(-35, 0.75);
-            moveForwardEncoder(35, getCounts(1.6));
+        LCD.Clear();
+        moveForwardsNoEncoder(-35, 0.75);
+        moveForwardEncoder(35, getCounts(1.6));
 }
 
 void turn(int percent, int counts) {
@@ -117,7 +118,7 @@ int getXYCountsRCS(float x, float y){
 
 // gives the rotation counts for the optimal rotation direction to the given heading from the current heading
 int getHeadingCounts(float heading){
-    Sleep(0.1);
+    Sleep(0.30);
     RCSPose* pos = RCS.RequestPosition();
     int count = 0;
     while(pos->x <= 0){
@@ -135,6 +136,7 @@ int getHeadingCounts(float heading){
         }
     }
     float degrees = 0;
+    // 300 -> 10
     if(abs(pos->heading - heading) > 180){  // passing 0
         if(pos->heading > heading){// turn counter-clockwise
             degrees = (360 - pos->heading) + heading;
@@ -155,20 +157,59 @@ void headingCorrection(float heading){
     RCSPose* pos = RCS.RequestPosition();
     // account for exactly 0
     if(heading == 0){
-        if(pos->heading < 358){
+        if(180 < pos->heading && pos->heading < 357){
             turn(-TURNING_SPEED, getHeadingCounts(heading));
-        } else if(pos->heading > 2){
+        } else if(180 > pos->heading && pos->heading > 3){
             turn(TURNING_SPEED, getHeadingCounts(heading));
         }
     } else{
-        if(pos->heading < heading - 2){
+        if(pos->heading < heading - 6){
             turn(-TURNING_SPEED, getHeadingCounts(heading));
-        } else if(pos->heading > heading + 2){
+        } else if(pos->heading > heading + 6){
             turn(TURNING_SPEED, getHeadingCounts(heading));
         }
     }
-
 }
+void xCorrection(int x){
+    RCSPose* pos = RCS.RequestPosition();
+    // account for exactly 0
+    if(x != pos->x){
+        if(pos->heading > 90 && pos->heading < 270){
+            if(x > pos->x){
+                moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(x, 0));
+            } else{
+                moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(x, 0));
+            }
+        } else{
+            if(x > pos->x){
+                moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(x, 0));
+            } else{
+                moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(x, 0));
+            }
+        }
+    }   
+}
+
+void yCorrection(int y){
+    RCSPose* pos = RCS.RequestPosition();
+    // account for exactly 0
+    if(y != pos->y){
+        if(pos->heading > 0 && pos->heading < 180){
+            if(y > pos->y){
+                moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(0, y));
+            } else{
+                moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, y));
+            }
+        } else{
+            if(y > pos->y){
+                moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, y));
+            } else{
+                moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(0, y));
+            }
+        }
+    }   
+}
+
 
 // method for hammering the arm on the compost bin mechanism to perform one 90 degree rotation.     
 void compostBinTurn(int high, int low, int speed, float moveDist){
@@ -194,31 +235,35 @@ void ERCMain(){
     // turn clockwise, starting from the high pos
     int armSpeedDiv = 30;
     float moveDist = 1.5;
-    for(int i = 0; i < 4; i++){
+    for(int i = 0; i < 2; i++){
         compostBinTurn(highPos, lowerPos, armSpeedDiv, moveDist);
     }
-    // correcting turn to account for initial oversteer
+    turn(-TURNING_SPEED, 1);
+    compostBinTurn(highPos, lowerPos, armSpeedDiv, moveDist);
     turn(TURNING_SPEED, 1);
+    // correcting turn to account for initial oversteer
     compostBinTurn(highPos, lowerPos, armSpeedDiv, moveDist);
     moveArm(highPos, lowerPos, armSpeedDiv);
     moveArm(lowerPos, highPos, armSpeedDiv);
     // turn to apple bucket
-    int appleLowPos = 154, appleHighPos = 105, appleSpeed = 2;
+    int appleLowPos = 154, appleHighPos = 100, appleSpeed = 2;
     turn(TURNING_SPEED, NINETYDEG_COUNTS/2);
     moveForwardEncoder(DEFAULT_SPEED, getCounts(0.5));
     // Call RCS to correct heading and position
     // offset turning slightly to not go on the ramp
     turn(TURNING_SPEED, getHeadingCounts(100));
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 18.5));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 18.95));
     // turn to bucket
     turn(-TURNING_SPEED, (NINETYDEG_COUNTS*2)/3);
-    turn(-TURNING_SPEED, getHeadingCounts(W));
+    turn(-TURNING_SPEED, getHeadingCounts(W-10));
+    headingCorrection(W);
     // back up to allow arm to come down to pick up basket
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
     moveArm(highPos, appleLowPos, appleSpeed);
-    int toBucketCounts = getXYCountsRCS(13.0, 0);
+    int toBucketCounts = getXYCountsRCS(13.2, 0);
     moveForwardEncoder(DEFAULT_SPEED, toBucketCounts);
     moveArm(appleLowPos, appleHighPos, appleSpeed);
+    moveArm(appleHighPos, appleHighPos + 2, appleSpeed);
     moveForwardEncoder(-DEFAULT_SPEED, toBucketCounts);
     turn(TURNING_SPEED, NINETYDEG_COUNTS/3);
     moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(28, 0));
@@ -239,23 +284,24 @@ void ERCMain(){
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.75));
     turn(TURNING_SPEED, 1);
     moveArm(160, 150, 2);
-    moveForwardEncoder(-(DEFAULT_SPEED+10), getCounts(1.3));
+    moveForwardEncoder(-(DEFAULT_SPEED+10), getCounts(0.75));
     moveArm(150, appleHighPos, 5);
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 61.3));
     // go to lever
     turn(-TURNING_SPEED, NINETYDEG_COUNTS);
-    headingCorrection(W);
+    headingCorrection(165);
     //turn slightly to the right if off still
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(4.5));
+
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(16.75, 0));
     // slight correction
-    turn(TURNING_SPEED, 6);
+    //turn(TURNING_SPEED, 6);
     // flick lever down
     moveArm(appleHighPos, lowerPos, armSpeedDiv);
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
     moveForwardEncoder(DEFAULT_SPEED, getCounts(2.0));
     // flick lever up
     moveArm(lowerPos, appleHighPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.5));
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.5));
     // go to open window with arm
     turn(-TURNING_SPEED, NINETYDEG_COUNTS);
     headingCorrection(S);
@@ -263,20 +309,20 @@ void ERCMain(){
     moveArm(appleHighPos, appleLowPos, armSpeedDiv);
     turn(TURNING_SPEED + 18, NINETYDEG_COUNTS/2 + 10);
     // back up to humidifier interface
-    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(0, 45));
+    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(0, 45.75));
     moveArm(appleLowPos, highPos, 8);
     // turn to light and move to it
     headingCorrection(W);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(9.5));   
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(4.0, 0));   
     // back to the ramp
-    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(27.6, 0));
+    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(28.5, 0));
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS);
     // go down ramp
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 8.0)/2);
     headingCorrection(S);
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 8.0));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 9.0));
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(2.0));
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(5.0));
 
 
 
