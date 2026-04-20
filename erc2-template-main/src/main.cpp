@@ -15,11 +15,7 @@
 #define NINETYDEG_COUNTS 48
 #define DEFAULT_SPEED 37
 #define TURNING_SPEED 25
-#define RCS_WAIT_TIME_IN_SEC 0.2
 
-// Defines for pulsing the robot
-#define PULSE_TIME 0.2
-#define PULSE_POWER -13
 
 // Define for the motor power
 #define POWER -20
@@ -46,11 +42,6 @@ FEHMotor left_motor(FEHMotor::Motor2,9.0);
 FEHServo armServo(FEHServo::Servo0);
 AnalogInputPin lightSensor(FEHIO::Pin1);
 
-void turn(int percent, int counts);
-void moveForwardsNoEncoder(int speed, float time);
-void moveForwardEncoder(int percent, int counts);
-void detectStart();
-
 // converts inches input into counts for shaft encoders
 int getCounts(float dist){
     return (ENCODER_MAX * dist) / (2 * PI * WHEEL_RADIUS);
@@ -70,6 +61,61 @@ void moveArm(int currentDegree, int targetDegree, int speedDiv){
 
 }
 
+void moveForwardEncoder(int percent, int counts) {
+    right_encoder.ResetCounts();
+    left_encoder.ResetCounts();
+
+    right_motor.SetPercent(percent);
+    left_motor.SetPercent(-1 * percent);
+
+    // maybe take the larger? idk
+    // have it stop when it stops spinning/ hits something
+    while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts){
+        // LCD.Write("Actual LE Counts: ");
+        // LCD.WriteLine(left_encoder.Counts());
+        // LCD.Write("Actual RE Counts: ");
+        // LCD.WriteLine(right_encoder.Counts());
+        // LCD.Clear();
+    }
+        LCD.Write("Actual LE Counts: ");
+        LCD.WriteLine(left_encoder.Counts());
+        LCD.Write("Actual RE Counts: ");
+        LCD.WriteLine(right_encoder.Counts());
+
+    right_motor.Stop();
+    left_motor.Stop();
+}
+
+
+
+void moveForwardsNoEncoder(int speed, float time){
+    right_motor.SetPercent(speed);
+    left_motor.SetPercent(-1 * speed);
+    Sleep(time);
+    right_motor.Stop();
+    left_motor.Stop();
+}
+
+// gets the number of counts for the given distance in inches
+// waits for the given number of seconds
+boolean displayLightColor(float seconds){
+    boolean red = false;
+    int starttime = time(NULL);
+    while(time(NULL) - starttime <= seconds){
+        if(lightSensor.Value() > RED_LIGHT_THRESHOLD){
+            LCD.SetFontColor(RED);
+            // LCD.FillRectangle(0, 0, 319, 239);
+            // Sleep(1.5);
+            red = true;
+        } else{
+            LCD.SetFontColor(BLUE);
+            // LCD.FillRectangle(0, 0, 319, 239);
+            // Sleep(1.5);
+        }
+    }
+    return red;
+}
+
 // pauses until the start light haas been detected by the CdS Cell
 void detectStart(){
     Sleep(0.1);
@@ -80,7 +126,25 @@ void detectStart(){
 }
 
 
+// positive percent = turn right, negative percent = turn left
+// turning 90 is approx 3/4 of full rotation 
+// so w/ 48, 90deg is 36 counts
+// IS 45deg 3/8? if so then its 18 counts for 45deg
+void turn(int percent, int counts) {
 
+
+    right_encoder.ResetCounts();
+    left_encoder.ResetCounts();
+
+    while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts){
+        right_motor.SetPercent(-1* percent);
+        left_motor.SetPercent(-1* percent); 
+    }
+    
+    right_motor.Stop();
+    left_motor.Stop();
+
+}
 // gets the number of counts for the robot to move to the specified robots
 // if x or y are sent in as 0, set them to the rcs pos
 int getXYCountsRCS(float x, float y){
@@ -178,121 +242,32 @@ void headingCorrection(float heading){
         } else if(pos->heading > 2){
             turn(TURNING_SPEED, getHeadingCounts(heading));
         }
-    }
-    if(pos->heading < heading - 2){
-        turn(-TURNING_SPEED, getHeadingCounts(heading));
-    } else if(pos->heading > heading + 2){
-        turn(TURNING_SPEED, getHeadingCounts(heading));
-    }
-}
-/*
-// TODO: COMPLETE THIS FUNCTION
-int getHeadingCounts(float x, float y){
-    RCSPose* pos = RCS.RequestPosition();
-
-    float radians = atan((pos->y - y)/ (pos->x - x));
-    return radians;
-}
-    */ 
-
-
-// writes the value that the CdS cell senses
-void writeLight(){
-        LCD.SetFontSize(5);
-        int x, y;
-        while(!LCD.Touch(&x,&y)){ //Wait for screen to be pressed
-            
-            LCD.Write(lightSensor.Value());
-            Sleep(0.5);
-            LCD.Clear();
-        
+    } else{
+        if(pos->heading < heading - 2){
+            turn(-TURNING_SPEED, getHeadingCounts(heading));
+        } else if(pos->heading > heading + 2){
+            turn(TURNING_SPEED, getHeadingCounts(heading));
         }
+    }
+
 }
+
 // moves until either encoder his the specified count
-void moveForwardEncoder(int percent, int counts) {
-    right_encoder.ResetCounts();
-    left_encoder.ResetCounts();
-
-    right_motor.SetPercent(percent);
-    left_motor.SetPercent(-1 * percent);
-
-    // maybe take the larger? idk
-    // have it stop when it stops spinning/ hits something
-    while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts){
-        // LCD.Write("Actual LE Counts: ");
-        // LCD.WriteLine(left_encoder.Counts());
-        // LCD.Write("Actual RE Counts: ");
-        // LCD.WriteLine(right_encoder.Counts());
-        // LCD.Clear();
-    }
-        // LCD.Write("Actual LE Counts: ");
-        // LCD.WriteLine(left_encoder.Counts());
-        // LCD.Write("Actual RE Counts: ");
-        // LCD.WriteLine(right_encoder.Counts());
-
-    right_motor.Stop();
-    left_motor.Stop();
-}
-
-// positive percent = turn right, negative percent = turn left
-// turning 90 is approx 3/4 of full rotation 
-// so w/ 48, 90deg is 36 counts
-// IS 45deg 3/8? if so then its 18 counts for 45deg
-void turn(int percent, int counts) {
 
 
-    right_encoder.ResetCounts();
-    left_encoder.ResetCounts();
 
-    while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts){
-        right_motor.SetPercent(-1* percent);
-        left_motor.SetPercent(-1* percent); 
-    }
-    
-    right_motor.Stop();
-    left_motor.Stop();
-
-}
-
-void moveForwardsNoEncoder(int speed, float time){
-    right_motor.SetPercent(speed);
-    left_motor.SetPercent(-1 * speed);
-    Sleep(time);
-    right_motor.Stop();
-    left_motor.Stop();
-}
-
-// gets the number of counts for the given distance in inches
-// waits for the given number of seconds
-boolean displayLightColor(float seconds){
-    boolean red = false;
-    int starttime = time(NULL);
-    while(time(NULL) - starttime <= seconds){
-        if(lightSensor.Value() > RED_LIGHT_THRESHOLD){
-            LCD.SetFontColor(RED);
-            // LCD.FillRectangle(0, 0, 319, 239);
-            // Sleep(1.5);
-            red = true;
-        } else{
-            LCD.SetFontColor(BLUE);
-            // LCD.FillRectangle(0, 0, 319, 239);
-            // Sleep(1.5);
-        }
-    }
-    return red;
-}
-
-void testServo(){
-    armServo.TouchCalibrate();
+// method for hammering the arm on the compost bin mechanism to perform one 90 degree rotation.     
+void compostBinTurn(int high, int low, int speed, float moveDist){
+    moveArm(high, low, speed);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(low, high, speed);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
 }
 
 void ERCMain(){
 
-    // RCS STUFF
+    // RCS
     RCS.InitializeTouchMenu("0150F4CPJ");
-    //TODO: remove rate delimiter
-    //RCS.DisableRateLimit();
-    //************************* */
     WaitForFinalAction();
 
     armServo.SetMin(500);
@@ -304,14 +279,13 @@ void ERCMain(){
     int x, y;
     // encoder distance calc
     // wheel radius = 1.05 
-    // 0.435 inches tread - or more likely 0.1 inches
+    // 0.1 inches tread
     // total experimental radius is  1.15 inches
     // wheel radius of 1.15
     // 48 counts per full rotation
-    // make a method to convert inches to counts
-    // dist = (2pi*radius*CountsRecorded) / Counts per rev
-    // dist = (2pi * 1.15 * n) / 48
+    // getCounts() is used for calculation
 
+    //moveForwardEncoder(DEFAULT_SPEED, getCounts(5));
 
     // QUALIFIERS
     detectStart();
@@ -319,7 +293,7 @@ void ERCMain(){
     turn(-TURNING_SPEED, getHeadingCounts(201));
     //headingCorrection(193);
     // put arm in down position
-    int lowerPos = 185, highPos = 102;
+    int lowerPos = 185, highPos = 105;
     // move to bin
     //moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(21.7, 4.0));
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(24, 0));
@@ -328,34 +302,18 @@ void ERCMain(){
     int armSpeedDiv = 30;
     float moveDist = 1.5;
     // make these into function calls to prevent copied code
-    moveArm(highPos, lowerPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(highPos, lowerPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(highPos, lowerPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(highPos, lowerPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    for(int i = 0; i < 4; i++){
+        compostBinTurn(highPos, lowerPos, armSpeedDiv, moveDist);
+    }
+    
     // correcting turn to account for initial oversteer
     turn(TURNING_SPEED, 1);
-    moveArm(highPos, lowerPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
-    moveArm(lowerPos, highPos, armSpeedDiv);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+    compostBinTurn(highPos, lowerPos, armSpeedDiv, moveDist);
     moveArm(highPos, lowerPos, armSpeedDiv);
     moveArm(lowerPos, highPos, armSpeedDiv);
-
 
     // turn to apple bucket
-    int appleLowPos = 157, appleHighPos = 105, appleSpeed = 2;
+    int appleLowPos = 154, appleHighPos = 105, appleSpeed = 2;
     turn(TURNING_SPEED, NINETYDEG_COUNTS/2);
     moveForwardEncoder(DEFAULT_SPEED, getCounts(0.5));
     // Call RCS to correct heading and position
@@ -369,16 +327,17 @@ void ERCMain(){
     // back up to allow arm to come down to pick up basket
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
     moveArm(highPos, appleLowPos, appleSpeed);
-    int toBucketCounts = getXYCountsRCS(13.75, 0);
+    int toBucketCounts = getXYCountsRCS(13.0, 0);
     moveForwardEncoder(DEFAULT_SPEED, toBucketCounts);
     moveArm(appleLowPos, appleHighPos, appleSpeed);
     moveForwardEncoder(-DEFAULT_SPEED, toBucketCounts);
     turn(TURNING_SPEED, NINETYDEG_COUNTS/3);
     moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(28, 0));
-    turn(TURNING_SPEED, getHeadingCounts(N));
+    turn(TURNING_SPEED, getHeadingCounts(N-5));
     headingCorrection(N);
     // go up ramp
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 43.75));
+    // manual turn and movement to get out of deadzone
     turn(-TURNING_SPEED, NINETYDEG_COUNTS);
     moveForwardEncoder(DEFAULT_SPEED, getCounts(2.0));
     headingCorrection(W);
@@ -399,9 +358,9 @@ void ERCMain(){
     headingCorrection(W);
     //possibly turn slightly to the right if off still
 
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(4.1));
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(4.5));
     // slight correction
-    turn(TURNING_SPEED, 1);
+    turn(TURNING_SPEED, 6);
     // flick lever down
     moveArm(appleHighPos, lowerPos, armSpeedDiv);
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
@@ -420,11 +379,13 @@ void ERCMain(){
     moveArm(appleLowPos, highPos, 8);
     // turn to light and move to it
     headingCorrection(W);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(9.0));   
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(9.5));   
     // back to the ramp
     moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(27.6, 0));
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS);
     // go down ramp
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 8.0)/2);
+    headingCorrection(S);
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 8.0));
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
     moveForwardEncoder(DEFAULT_SPEED, getCounts(2.0));
@@ -702,8 +663,6 @@ void ERCMain(){
 
 
 
-
-
     // moveForwardsNoEncoder(speed, 7.0);
     // Sleep(0.5);
     // moveForwardsNoEncoder(-1 * speed, 7.0);
@@ -744,9 +703,6 @@ void ERCMain(){
         // move
 
 
-        
-    
-    
     
     //472.37 for 14 inches
     //337 for 10 inches
