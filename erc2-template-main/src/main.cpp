@@ -16,23 +16,10 @@
 #define DEFAULT_SPEED 37
 #define TURNING_SPEED 25
 
-
-// Define for the motor power
-#define POWER -20
-
-// Orientation of AruCo Code
-#define FORWARDS 0
-#define BACKWARDS 1
-
 // heading keywords
 #define N 90
-#define NE 45
-#define NW 135
-// need special code to handle 0
 #define E 0
 #define S 270
-#define SE 
-#define SW 
 #define W 180
 
 DigitalEncoder right_encoder(FEHIO::Pin8);
@@ -46,8 +33,7 @@ AnalogInputPin lightSensor(FEHIO::Pin1);
 int getCounts(float dist){
     return (ENCODER_MAX * dist) / (2 * PI * WHEEL_RADIUS);
 }
-
-// smoothly move arm ( cannot have currentdegree = targetDegree)
+// smoothly move arm
 void moveArm(int currentDegree, int targetDegree, int speedDiv){
     int direction = 1; //1 = up, -1 = down
     if(targetDegree < currentDegree){
@@ -60,33 +46,15 @@ void moveArm(int currentDegree, int targetDegree, int speedDiv){
     Sleep(0.3);
 
 }
-
 void moveForwardEncoder(int percent, int counts) {
     right_encoder.ResetCounts();
     left_encoder.ResetCounts();
-
     right_motor.SetPercent(percent);
     left_motor.SetPercent(-1 * percent);
-
-    // maybe take the larger? idk
-    // have it stop when it stops spinning/ hits something
-    while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts){
-        // LCD.Write("Actual LE Counts: ");
-        // LCD.WriteLine(left_encoder.Counts());
-        // LCD.Write("Actual RE Counts: ");
-        // LCD.WriteLine(right_encoder.Counts());
-        // LCD.Clear();
-    }
-        LCD.Write("Actual LE Counts: ");
-        LCD.WriteLine(left_encoder.Counts());
-        LCD.Write("Actual RE Counts: ");
-        LCD.WriteLine(right_encoder.Counts());
-
+    while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts);
     right_motor.Stop();
     left_motor.Stop();
 }
-
-
 
 void moveForwardsNoEncoder(int speed, float time){
     right_motor.SetPercent(speed);
@@ -94,26 +62,6 @@ void moveForwardsNoEncoder(int speed, float time){
     Sleep(time);
     right_motor.Stop();
     left_motor.Stop();
-}
-
-// gets the number of counts for the given distance in inches
-// waits for the given number of seconds
-boolean displayLightColor(float seconds){
-    boolean red = false;
-    int starttime = time(NULL);
-    while(time(NULL) - starttime <= seconds){
-        if(lightSensor.Value() > RED_LIGHT_THRESHOLD){
-            LCD.SetFontColor(RED);
-            // LCD.FillRectangle(0, 0, 319, 239);
-            // Sleep(1.5);
-            red = true;
-        } else{
-            LCD.SetFontColor(BLUE);
-            // LCD.FillRectangle(0, 0, 319, 239);
-            // Sleep(1.5);
-        }
-    }
-    return red;
 }
 
 // pauses until the start light haas been detected by the CdS Cell
@@ -125,25 +73,15 @@ void detectStart(){
             moveForwardEncoder(35, getCounts(1.6));
 }
 
-
-// positive percent = turn right, negative percent = turn left
-// turning 90 is approx 3/4 of full rotation 
-// so w/ 48, 90deg is 36 counts
-// IS 45deg 3/8? if so then its 18 counts for 45deg
 void turn(int percent, int counts) {
-
-
     right_encoder.ResetCounts();
     left_encoder.ResetCounts();
-
     while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts){
         right_motor.SetPercent(-1* percent);
         left_motor.SetPercent(-1* percent); 
     }
-    
     right_motor.Stop();
     left_motor.Stop();
-
 }
 // gets the number of counts for the robot to move to the specified robots
 // if x or y are sent in as 0, set them to the rcs pos
@@ -166,32 +104,19 @@ int getXYCountsRCS(float x, float y){
             return 0;
         }
     }
-    
-    LCD.Clear();
-    LCD.WriteLine("RCS X:");
-    LCD.WriteLine(pos->x);
-    LCD.WriteLine("RCS Y:");
-    LCD.WriteLine(pos->y);
-    LCD.Clear();
     if(x == 0){
         x = pos->x;
     }
     if(y == 0){
         y = pos->y;
     }
-    float underSqrt = pow((x - pos->x), 2) + pow((y - pos->y), 2.0);
-    float hyp = sqrt(underSqrt);
-    LCD.WriteLine("DISTANCE:");
-    LCD.WriteLine(hyp);
-    LCD.WriteLine("COUNTS:");
-    LCD.WriteLine(getCounts(hyp));
+    float hyp = sqrt(pow((x - pos->x), 2) + pow((y - pos->y), 2.0));
+
     return getCounts(hyp);
 }
 
-// gives the rotation counts for the most optimal rotation direction to the given heading from the current heading
-// this seems to be off slightly
+// gives the rotation counts for the optimal rotation direction to the given heading from the current heading
 int getHeadingCounts(float heading){
-    //90, given 135
     Sleep(0.1);
     RCSPose* pos = RCS.RequestPosition();
     int count = 0;
@@ -210,7 +135,6 @@ int getHeadingCounts(float heading){
         }
     }
     float degrees = 0;
-    //(90 - 135 = 45)
     if(abs(pos->heading - heading) > 180){  // passing 0
         if(pos->heading > heading){// turn counter-clockwise
             degrees = (360 - pos->heading) + heading;
@@ -218,17 +142,11 @@ int getHeadingCounts(float heading){
             degrees = (360 - heading) + pos->heading; 
         }
     } else{ // turn clockwise
-        degrees = abs(pos->heading - heading); // 135 - 90 = 45
+        degrees = abs(pos->heading - heading); 
     }
 
-    // 300 -> 40 = 100 degree turn
+
     int counts = (degrees/90.0) * NINETYDEG_COUNTS;
-    LCD.WriteLine("HEADING CURRENT");
-    LCD.WriteLine(pos->heading);
-    LCD.WriteLine("HEADING FINAL");
-    LCD.WriteLine(heading);
-    LCD.WriteLine("COUNTS");
-    LCD.WriteLine(counts);
     return counts;
 }
 
@@ -252,10 +170,6 @@ void headingCorrection(float heading){
 
 }
 
-// moves until either encoder his the specified count
-
-
-
 // method for hammering the arm on the compost bin mechanism to perform one 90 degree rotation.     
 void compostBinTurn(int high, int low, int speed, float moveDist){
     moveArm(high, low, speed);
@@ -266,52 +180,28 @@ void compostBinTurn(int high, int low, int speed, float moveDist){
 
 void ERCMain(){
 
-    // RCS
     RCS.InitializeTouchMenu("0150F4CPJ");
     WaitForFinalAction();
 
     armServo.SetMin(500);
     armServo.SetMax(2500);
 
-    //0 = left, 1 = mid, 2 = right
-    //int lever = RCS.GetLever();
-
-    int x, y;
-    // encoder distance calc
-    // wheel radius = 1.05 
-    // 0.1 inches tread
-    // total experimental radius is  1.15 inches
-    // wheel radius of 1.15
-    // 48 counts per full rotation
-    // getCounts() is used for calculation
-
-    //moveForwardEncoder(DEFAULT_SPEED, getCounts(5));
-
-    // QUALIFIERS
     detectStart();
-    // Milestone 5 code to spin compost bin
     turn(-TURNING_SPEED, getHeadingCounts(201));
-    //headingCorrection(193);
-    // put arm in down position
     int lowerPos = 185, highPos = 105;
     // move to bin
-    //moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(21.7, 4.0));
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(24, 0));
-    //moveForwardEncoder(DEFAULT_SPEED, getCounts(7.0));
     // turn clockwise, starting from the high pos
     int armSpeedDiv = 30;
     float moveDist = 1.5;
-    // make these into function calls to prevent copied code
     for(int i = 0; i < 4; i++){
         compostBinTurn(highPos, lowerPos, armSpeedDiv, moveDist);
     }
-    
     // correcting turn to account for initial oversteer
     turn(TURNING_SPEED, 1);
     compostBinTurn(highPos, lowerPos, armSpeedDiv, moveDist);
     moveArm(highPos, lowerPos, armSpeedDiv);
     moveArm(lowerPos, highPos, armSpeedDiv);
-
     // turn to apple bucket
     int appleLowPos = 154, appleHighPos = 105, appleSpeed = 2;
     turn(TURNING_SPEED, NINETYDEG_COUNTS/2);
@@ -323,7 +213,6 @@ void ERCMain(){
     // turn to bucket
     turn(-TURNING_SPEED, (NINETYDEG_COUNTS*2)/3);
     turn(-TURNING_SPEED, getHeadingCounts(W));
-    
     // back up to allow arm to come down to pick up basket
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
     moveArm(highPos, appleLowPos, appleSpeed);
@@ -353,11 +242,10 @@ void ERCMain(){
     moveForwardEncoder(-(DEFAULT_SPEED+10), getCounts(1.3));
     moveArm(150, appleHighPos, 5);
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 61.3));
-    // go to levers, any lever counts for primary points
+    // go to lever
     turn(-TURNING_SPEED, NINETYDEG_COUNTS);
     headingCorrection(W);
-    //possibly turn slightly to the right if off still
-
+    //turn slightly to the right if off still
     moveForwardEncoder(DEFAULT_SPEED, getCounts(4.5));
     // slight correction
     turn(TURNING_SPEED, 6);
@@ -389,11 +277,7 @@ void ERCMain(){
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 8.0));
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
     moveForwardEncoder(DEFAULT_SPEED, getCounts(2.0));
-    // TODO: add correcting code to redirect to button
-    // TODO: make sure timing is good
-    // TODO: make sure number of RCS calls do not exceed 50 (looks good so far)
-    LCD.Clear();
-    LCD.WriteLine(RCS.RequestsRemaining());
+
 
 
 
@@ -708,4 +592,22 @@ void ERCMain(){
     //337 for 10 inches
     //135 for 4 inches
 }
-
+// gets the number of counts for the given distance in inches
+// waits for the given number of seconds
+boolean displayLightColor(float seconds){
+    boolean red = false;
+    int starttime = time(NULL);
+    while(time(NULL) - starttime <= seconds){
+        if(lightSensor.Value() > RED_LIGHT_THRESHOLD){
+            LCD.SetFontColor(RED);
+            // LCD.FillRectangle(0, 0, 319, 239);
+            // Sleep(1.5);
+            red = true;
+        } else{
+            LCD.SetFontColor(BLUE);
+            // LCD.FillRectangle(0, 0, 319, 239);
+            // Sleep(1.5);
+        }
+    }
+    return red;
+}
