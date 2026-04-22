@@ -23,7 +23,7 @@
 #define W 180
 
 DigitalEncoder right_encoder(FEHIO::Pin8);
-DigitalEncoder left_encoder(FEHIO::Pin10);
+DigitalEncoder left_encoder(FEHIO::Pin14);
 FEHMotor right_motor(FEHMotor::Motor1,9.0);
 FEHMotor left_motor(FEHMotor::Motor2,9.0);
 FEHServo armServo(FEHServo::Servo0);
@@ -71,7 +71,7 @@ void detectStart(){
         while((lightSensor.Value() > ANY_LIGHT_VALUE));
         LCD.Clear();
         moveForwardsNoEncoder(-35, 0.75);
-        moveForwardEncoder(35, getCounts(1.6));
+        moveForwardEncoder(35, getCounts(2.0));
 }
 
 void turn(int percent, int counts) {
@@ -127,6 +127,9 @@ int getHeadingCounts(float heading){
         LCD.SetFontColor(RED);
         LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
         LCD.SetFontColor(WHITE);
+        if(count == 3){
+            Sleep(1.0);
+        }
         count++;
         if(count > 7){
             LCD.SetFontColor(RED);
@@ -155,6 +158,25 @@ int getHeadingCounts(float heading){
 // Only call with headings > 10 or == 0 to account for RCS inconsistency
 void headingCorrection(float heading){
     RCSPose* pos = RCS.RequestPosition();
+    int count = 0;
+    while(pos->heading <= 0){
+        Sleep(0.30);
+        pos = RCS.RequestPosition();
+        LCD.SetFontColor(RED);
+        LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
+        LCD.SetFontColor(WHITE);
+        if(count == 3){
+            Sleep(1.0);
+        }
+        count++;
+        
+        if(count > 7){
+            LCD.SetFontColor(RED);
+            LCD.WriteRC("TOO MANY INVALID RCS VALUES, RETURN 0", 5, 5);
+            LCD.SetFontColor(WHITE);
+            return;
+        }
+    }
     // account for exactly 0
     if(heading == 0){
         if(180 < pos->heading && pos->heading < 357){
@@ -163,15 +185,33 @@ void headingCorrection(float heading){
             turn(TURNING_SPEED, getHeadingCounts(heading));
         }
     } else{
-        if(pos->heading < heading - 6){
+        if(pos->heading < heading - 4){
             turn(-TURNING_SPEED, getHeadingCounts(heading));
-        } else if(pos->heading > heading + 6){
+        } else if(pos->heading > heading + 4){
             turn(TURNING_SPEED, getHeadingCounts(heading));
         }
     }
 }
 void xCorrection(int x){
     RCSPose* pos = RCS.RequestPosition();
+    int count = 0;
+    while(pos->x <= 0){
+        Sleep(0.30);
+        pos = RCS.RequestPosition();
+        LCD.SetFontColor(RED);
+        LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
+        LCD.SetFontColor(WHITE);
+        if(count == 3){
+            Sleep(1.0);
+        }
+        count++;
+        if(count > 7){
+            LCD.SetFontColor(RED);
+            LCD.WriteRC("TOO MANY INVALID RCS VALUES, RETURN 0", 5, 5);
+            LCD.SetFontColor(WHITE);
+            return;
+        }
+    }
     // account for exactly 0
     if(x != pos->x){
         if(pos->heading > 90 && pos->heading < 270){
@@ -192,6 +232,24 @@ void xCorrection(int x){
 
 void yCorrection(int y){
     RCSPose* pos = RCS.RequestPosition();
+    int count = 0;
+    while(pos->y <= 0){
+        Sleep(0.30);
+        pos = RCS.RequestPosition();
+        LCD.SetFontColor(RED);
+        LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
+        LCD.SetFontColor(WHITE);
+        if(count == 3){
+            Sleep(1.0);
+        }
+        count++;
+        if(count > 7){
+            LCD.SetFontColor(RED);
+            LCD.WriteRC("TOO MANY INVALID RCS VALUES, RETURN 0", 5, 5);
+            LCD.SetFontColor(WHITE);
+            return;
+        }
+    }
     // account for exactly 0
     if(y != pos->y){
         if(pos->heading > 0 && pos->heading < 180){
@@ -228,10 +286,11 @@ void ERCMain(){
     armServo.SetMax(2500);
 
     detectStart();
-    turn(-TURNING_SPEED, getHeadingCounts(201));
+    turn(-TURNING_SPEED, getHeadingCounts(180));
+    turn(-TURNING_SPEED, getHeadingCounts(196));
     int lowerPos = 185, highPos = 105;
     // move to bin
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(24, 0));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(23.82, 0));
     // turn clockwise, starting from the high pos
     int armSpeedDiv = 30;
     float moveDist = 1.5;
@@ -244,21 +303,29 @@ void ERCMain(){
     // correcting turn to account for initial oversteer
     compostBinTurn(highPos, lowerPos, armSpeedDiv, moveDist);
     moveArm(highPos, lowerPos, armSpeedDiv);
-    moveArm(lowerPos, highPos, armSpeedDiv);
+    moveArm(lowerPos, highPos+30, armSpeedDiv);
     // turn to apple bucket
-    int appleLowPos = 154, appleHighPos = 100, appleSpeed = 2;
+    int appleLowPos = 155, appleHighPos = 100, appleSpeed = 2;
     turn(TURNING_SPEED, NINETYDEG_COUNTS/2);
     moveForwardEncoder(DEFAULT_SPEED, getCounts(0.5));
-    // Call RCS to correct heading and position
+    // *CHANGE go to lower window first, then apple basket
     // offset turning slightly to not go on the ramp
-    turn(TURNING_SPEED, getHeadingCounts(100));
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 18.95));
+    turn(TURNING_SPEED, getHeadingCounts(108));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 20.75));
+    turn(TURNING_SPEED + 18, NINETYDEG_COUNTS/4 + 5);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.25));
+    turn(TURNING_SPEED + 18, NINETYDEG_COUNTS/4 + 5);
+    turn(-(TURNING_SPEED + 18), NINETYDEG_COUNTS/2 + 10);
+    turn(TURNING_SPEED + 18, 1);
+    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(19.25, 0));
+    // turn(TURNING_SPEED, getHeadingCounts(100));
+    // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 18.95));
     // turn to bucket
-    turn(-TURNING_SPEED, (NINETYDEG_COUNTS*2)/3);
-    turn(-TURNING_SPEED, getHeadingCounts(W-10));
-    headingCorrection(W);
+    turn(-TURNING_SPEED, (NINETYDEG_COUNTS)/3);
+    turn(-TURNING_SPEED, getHeadingCounts(W-2));
+    //headingCorrection(W-5);
     // back up to allow arm to come down to pick up basket
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1.0));
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
     moveArm(highPos, appleLowPos, appleSpeed);
     int toBucketCounts = getXYCountsRCS(13.2, 0);
     moveForwardEncoder(DEFAULT_SPEED, toBucketCounts);
@@ -289,45 +356,45 @@ void ERCMain(){
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 61.3));
     // go to lever
     turn(-TURNING_SPEED, NINETYDEG_COUNTS);
-    headingCorrection(165);
+    headingCorrection(174);
     //turn slightly to the right if off still
 
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(16.75, 0));
     // slight correction
     //turn(TURNING_SPEED, 6);
     // flick lever down
-    moveArm(appleHighPos, lowerPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.0));
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(2.0));
+    moveArm(appleHighPos, lowerPos + 30, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.5));
+    Sleep(4.6);
+    turn(-TURNING_SPEED, 1);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(3.25));
+    turn(TURNING_SPEED, 1);
     // flick lever up
-    moveArm(lowerPos, appleHighPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.5));
+    moveArm(lowerPos + 30, appleHighPos, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.7));
     // go to open window with arm
     turn(-TURNING_SPEED, NINETYDEG_COUNTS);
     headingCorrection(S);
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 50));
     moveArm(appleHighPos, appleLowPos, armSpeedDiv);
-    turn(TURNING_SPEED + 18, NINETYDEG_COUNTS/2 + 10);
+    turn(TURNING_SPEED + 20, NINETYDEG_COUNTS/2 + 10);
+    turn(-TURNING_SPEED, 1);
     // back up to humidifier interface
-    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(0, 45.75));
+    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(0, 45.8));
     moveArm(appleLowPos, highPos, 8);
     // turn to light and move to it
     headingCorrection(W);
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(4.0, 0));   
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(4.5, 0));   
     // back to the ramp
     moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(28.5, 0));
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS);
     // go down ramp
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 8.0)/2);
+    moveForwardEncoder(40, getXYCountsRCS(0, 8.0)/2);
     headingCorrection(S);
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 9.0));
+    moveForwardEncoder(40, getXYCountsRCS(0, 9.0));
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(5.0));
+    moveForwardEncoder(40, getCounts(9.0));
 
-
-
-
-    
 
 
     
