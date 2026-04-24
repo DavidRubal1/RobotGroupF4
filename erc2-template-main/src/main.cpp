@@ -14,6 +14,7 @@
 #define RED_LIGHT_THRESHOLD 1.3
 #define NINETYDEG_COUNTS 48
 #define DEFAULT_SPEED 37
+#define FAST_SPEED 45
 #define TURNING_SPEED 25
 
 // heading keywords
@@ -52,7 +53,7 @@ void moveForwardEncoder(int percent, int counts) {
     left_encoder.ResetCounts();
     right_motor.SetPercent(percent);
     left_motor.SetPercent(-1 * percent);
-    while(right_encoder.Counts() <= counts || left_encoder.Counts() <= counts);
+    while(left_encoder.Counts() <= counts || right_encoder.Counts() <= counts);
     right_motor.Stop();
     left_motor.Stop();
 }
@@ -71,7 +72,7 @@ void detectStart(){
         while((lightSensor.Value() > ANY_LIGHT_VALUE));
         LCD.Clear();
         moveForwardsNoEncoder(-35, 0.75);
-        moveForwardEncoder(35, getCounts(2.0));
+        moveForwardEncoder(35, getCounts(2.25));
 }
 
 void turn(int percent, int counts) {
@@ -86,32 +87,48 @@ void turn(int percent, int counts) {
 }
 // gets the number of counts for the robot to move to the specified robots
 // if x or y are sent in as 0, set them to the rcs pos
-int getXYCountsRCS(float x, float y){
-
-    Sleep(0.30);
-    RCSPose* pos = RCS.RequestPosition();
+void RCSRecover(RCSPose* pos){
     int count = 0;
-    while(pos->x <= 0){
+    while(pos->x <= 0 || pos->x >100){
         Sleep(0.30);
         pos = RCS.RequestPosition();
         LCD.SetFontColor(RED);
+        LCD.SetFontSize(5);
         LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
+        LCD.WriteRC(pos->x, 6, 5);
         LCD.SetFontColor(WHITE);
+        if(count >= 4){
+            Sleep(0.7);
+        } 
+        //panic move
+        if(count == 6){
+            moveForwardEncoder(DEFAULT_SPEED, getCounts(1));
+        }
         count++;
-        if(count > 7){
+        if(count > 15){
             LCD.SetFontColor(RED);
             LCD.WriteRC("TOO MANY INVALID RCS VALUES, RETURN 0", 5, 5);
             LCD.SetFontColor(WHITE);
-            return 0;
+            return;
         }
     }
-    if(x == 0){
-        x = pos->x;
+
+}
+int getXYCountsRCS(float x, float y){
+    float hyp = 100;
+    while(hyp > 50){
+        Sleep(0.30);
+        RCSPose* pos = RCS.RequestPosition();
+        RCSRecover(pos);
+        if(x == 0){
+            x = pos->x;
+        }
+        if(y == 0){
+            y = pos->y;
+        }
+        hyp = sqrt(pow((x - pos->x), 2) + pow((y - pos->y), 2.0));
     }
-    if(y == 0){
-        y = pos->y;
-    }
-    float hyp = sqrt(pow((x - pos->x), 2) + pow((y - pos->y), 2.0));
+
 
     return getCounts(hyp);
 }
@@ -120,24 +137,7 @@ int getXYCountsRCS(float x, float y){
 int getHeadingCounts(float heading){
     Sleep(0.30);
     RCSPose* pos = RCS.RequestPosition();
-    int count = 0;
-    while(pos->x <= 0){
-        Sleep(0.30);
-        pos = RCS.RequestPosition();
-        LCD.SetFontColor(RED);
-        LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
-        LCD.SetFontColor(WHITE);
-        if(count == 3){
-            Sleep(1.0);
-        }
-        count++;
-        if(count > 7){
-            LCD.SetFontColor(RED);
-            LCD.WriteRC("TOO MANY INVALID RCS VALUES, RETURN 0", 5, 5);
-            LCD.SetFontColor(WHITE);
-            return 0;
-        }
-    }
+    RCSRecover(pos);
     float degrees = 0;
     // 300 -> 10
     if(abs(pos->heading - heading) > 180){  // passing 0
@@ -158,25 +158,7 @@ int getHeadingCounts(float heading){
 // Only call with headings > 10 or == 0 to account for RCS inconsistency
 void headingCorrection(float heading){
     RCSPose* pos = RCS.RequestPosition();
-    int count = 0;
-    while(pos->heading <= 0){
-        Sleep(0.30);
-        pos = RCS.RequestPosition();
-        LCD.SetFontColor(RED);
-        LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
-        LCD.SetFontColor(WHITE);
-        if(count == 3){
-            Sleep(1.0);
-        }
-        count++;
-        
-        if(count > 7){
-            LCD.SetFontColor(RED);
-            LCD.WriteRC("TOO MANY INVALID RCS VALUES, RETURN 0", 5, 5);
-            LCD.SetFontColor(WHITE);
-            return;
-        }
-    }
+    RCSRecover(pos);
     // account for exactly 0
     if(heading == 0){
         if(180 < pos->heading && pos->heading < 357){
@@ -194,24 +176,7 @@ void headingCorrection(float heading){
 }
 void xCorrection(int x){
     RCSPose* pos = RCS.RequestPosition();
-    int count = 0;
-    while(pos->x <= 0){
-        Sleep(0.30);
-        pos = RCS.RequestPosition();
-        LCD.SetFontColor(RED);
-        LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
-        LCD.SetFontColor(WHITE);
-        if(count == 3){
-            Sleep(1.0);
-        }
-        count++;
-        if(count > 7){
-            LCD.SetFontColor(RED);
-            LCD.WriteRC("TOO MANY INVALID RCS VALUES, RETURN 0", 5, 5);
-            LCD.SetFontColor(WHITE);
-            return;
-        }
-    }
+    RCSRecover(pos);
     // account for exactly 0
     if(x != pos->x){
         if(pos->heading > 90 && pos->heading < 270){
@@ -232,24 +197,7 @@ void xCorrection(int x){
 
 void yCorrection(int y){
     RCSPose* pos = RCS.RequestPosition();
-    int count = 0;
-    while(pos->y <= 0){
-        Sleep(0.30);
-        pos = RCS.RequestPosition();
-        LCD.SetFontColor(RED);
-        LCD.WriteRC("NEGATIVE RCS VALUES", 5, 5);
-        LCD.SetFontColor(WHITE);
-        if(count == 3){
-            Sleep(1.0);
-        }
-        count++;
-        if(count > 7){
-            LCD.SetFontColor(RED);
-            LCD.WriteRC("TOO MANY INVALID RCS VALUES, RETURN 0", 5, 5);
-            LCD.SetFontColor(WHITE);
-            return;
-        }
-    }
+    RCSRecover(pos);
     // account for exactly 0
     if(y != pos->y){
         if(pos->heading > 0 && pos->heading < 180){
@@ -277,7 +225,38 @@ void compostBinTurn(int high, int low, int speed, float moveDist){
     moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
 }
 
+void reverseCompostBin(int high, int low, int speed, float moveDist){
+    moveArm(low, high, speed);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(moveDist));
+    moveArm(high, low, speed);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(moveDist));
+}
+
+void writeLight(){
+        LCD.SetFontSize(5);
+        int x, y;
+        while(!LCD.Touch(&x,&y)){ //Wait for screen to be pressed
+            
+            LCD.Write(lightSensor.Value());
+            Sleep(0.5);
+            LCD.Clear();
+        
+        }
+}
+
 void ERCMain(){
+
+    // armServo.SetMin(500);
+    // armServo.SetMax(2500);
+    // //TESTING REMOVE THIS BEFORE FINAL UPLOAD
+    // writeLight();
+    // moveForwardEncoder(DEFAULT_SPEED, getCounts(7.5));
+    // moveForwardEncoder(-DEFAULT_SPEED, getCounts(7.5));
+    // turn(TURNING_SPEED, NINETYDEG_COUNTS);
+    // turn(-TURNING_SPEED, NINETYDEG_COUNTS);
+    // moveArm(90, 180, 2);
+    // moveArm(180, 90, 2);
+
 
     RCS.InitializeTouchMenu("0150F4CPJ");
     WaitForFinalAction();
@@ -287,10 +266,10 @@ void ERCMain(){
 
     detectStart();
     turn(-TURNING_SPEED, getHeadingCounts(180));
-    turn(-TURNING_SPEED, getHeadingCounts(196));
+    turn(-TURNING_SPEED, getHeadingCounts(194));
     int lowerPos = 185, highPos = 105;
     // move to bin
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(23.82, 0));
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(23.9, 0));
     // turn clockwise, starting from the high pos
     int armSpeedDiv = 30;
     float moveDist = 1.5;
@@ -303,21 +282,23 @@ void ERCMain(){
     // correcting turn to account for initial oversteer
     compostBinTurn(highPos, lowerPos, armSpeedDiv, moveDist);
     moveArm(highPos, lowerPos, armSpeedDiv);
-    moveArm(lowerPos, highPos+30, armSpeedDiv);
+    moveArm(lowerPos, highPos+25, armSpeedDiv);
     // turn to apple bucket
     int appleLowPos = 155, appleHighPos = 100, appleSpeed = 2;
     turn(TURNING_SPEED, NINETYDEG_COUNTS/2);
     moveForwardEncoder(DEFAULT_SPEED, getCounts(0.5));
     // *CHANGE go to lower window first, then apple basket
     // offset turning slightly to not go on the ramp
-    turn(TURNING_SPEED, getHeadingCounts(108));
+    turn(TURNING_SPEED, getHeadingCounts(113));
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 20.75));
-    turn(TURNING_SPEED + 18, NINETYDEG_COUNTS/4 + 5);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.25));
-    turn(TURNING_SPEED + 18, NINETYDEG_COUNTS/4 + 5);
+    turn(TURNING_SPEED + 22, NINETYDEG_COUNTS/4 + 5);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.5));
+    turn(TURNING_SPEED + 22, NINETYDEG_COUNTS/4);
+    moveArm(highPos+33, highPos, armSpeedDiv);
     turn(-(TURNING_SPEED + 18), NINETYDEG_COUNTS/2 + 10);
     turn(TURNING_SPEED + 18, 1);
-    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(19.25, 0));
+    moveArm(highPos, highPos +33, armSpeedDiv);
+    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(0, 18));
     // turn(TURNING_SPEED, getHeadingCounts(100));
     // moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 18.95));
     // turn to bucket
@@ -332,12 +313,12 @@ void ERCMain(){
     moveArm(appleLowPos, appleHighPos, appleSpeed);
     moveArm(appleHighPos, appleHighPos + 2, appleSpeed);
     moveForwardEncoder(-DEFAULT_SPEED, toBucketCounts);
-    turn(TURNING_SPEED, NINETYDEG_COUNTS/3);
-    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(28, 0));
+    turn(TURNING_SPEED, NINETYDEG_COUNTS/3 - 3);
+    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(28.0, 0));
     turn(TURNING_SPEED, getHeadingCounts(N-5));
-    headingCorrection(N);
+    headingCorrection(N-2);
     // go up ramp
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 43.75));
+    moveForwardEncoder(FAST_SPEED, getXYCountsRCS(0, 43.75));
     // manual turn and movement to get out of deadzone
     turn(-TURNING_SPEED, NINETYDEG_COUNTS);
     moveForwardEncoder(DEFAULT_SPEED, getCounts(2.0));
@@ -346,12 +327,12 @@ void ERCMain(){
     // turn towards lower basket
     turn(TURNING_SPEED, NINETYDEG_COUNTS);
     headingCorrection(N);
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 61));
+    moveForwardEncoder(FAST_SPEED, getXYCountsRCS(0, 61));
     moveArm(appleHighPos, 160, 2);
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.75));
     turn(TURNING_SPEED, 1);
     moveArm(160, 150, 2);
-    moveForwardEncoder(-(DEFAULT_SPEED+10), getCounts(0.75));
+    moveForwardEncoder(-FAST_SPEED, getCounts(0.75));
     moveArm(150, appleHighPos, 5);
     moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(0, 61.3));
     // go to lever
@@ -365,13 +346,14 @@ void ERCMain(){
     // flick lever down
     moveArm(appleHighPos, lowerPos + 30, armSpeedDiv);
     moveForwardEncoder(-DEFAULT_SPEED, getCounts(2.5));
-    Sleep(4.6);
+    Sleep(4.4);
     turn(-TURNING_SPEED, 1);
-    moveForwardEncoder(DEFAULT_SPEED, getCounts(3.25));
-    turn(TURNING_SPEED, 1);
+    moveForwardEncoder(DEFAULT_SPEED, getCounts(3.5));
+    turn(TURNING_SPEED, 4);
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1));
     // flick lever up
     moveArm(lowerPos + 30, appleHighPos, armSpeedDiv);
-    moveForwardEncoder(-DEFAULT_SPEED, getCounts(0.7));
+    moveForwardEncoder(-DEFAULT_SPEED, getCounts(1));
     // go to open window with arm
     turn(-TURNING_SPEED, NINETYDEG_COUNTS);
     headingCorrection(S);
@@ -380,20 +362,21 @@ void ERCMain(){
     turn(TURNING_SPEED + 20, NINETYDEG_COUNTS/2 + 10);
     turn(-TURNING_SPEED, 1);
     // back up to humidifier interface
+    turn(-TURNING_SPEED, 2);
     moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(0, 45.8));
     moveArm(appleLowPos, highPos, 8);
     // turn to light and move to it
     headingCorrection(W);
-    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(4.5, 0));   
+    moveForwardEncoder(DEFAULT_SPEED, getXYCountsRCS(6.4, 0));   
     // back to the ramp
-    moveForwardEncoder(-DEFAULT_SPEED, getXYCountsRCS(28.5, 0));
+    moveForwardEncoder(-FAST_SPEED, getXYCountsRCS(28.8, 0));
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS);
     // go down ramp
-    moveForwardEncoder(40, getXYCountsRCS(0, 8.0)/2);
+    moveForwardEncoder(FAST_SPEED, getXYCountsRCS(0, 8.0)/2);
     headingCorrection(S);
-    moveForwardEncoder(40, getXYCountsRCS(0, 9.0));
+    moveForwardEncoder(FAST_SPEED, getXYCountsRCS(0, 9.0));
     turn(-DEFAULT_SPEED, NINETYDEG_COUNTS/2);
-    moveForwardEncoder(40, getCounts(9.0));
+    moveForwardEncoder(FAST_SPEED, getCounts(9.0));
 
 
 
